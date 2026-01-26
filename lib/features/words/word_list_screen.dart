@@ -28,6 +28,22 @@ class _WordListScreenState extends State<WordListScreen> {
     Colors.indigo,
     Colors.cyan,
     Colors.blueGrey,
+    // Expanded Palette
+    const Color(0xFFEF4444), // Red 500
+    const Color(0xFFF97316), // Orange 500
+    const Color(0xFFEAB308), // Yellow 500
+    const Color(0xFF22C55E), // Green 500
+    const Color(0xFF10B981), // Emerald 500
+    const Color(0xFF14B8A6), // Teal 500
+    const Color(0xFF06B6D4), // Cyan 500
+    const Color(0xFF0EA5E9), // Sky 500
+    const Color(0xFF3B82F6), // Blue 500
+    const Color(0xFF6366F1), // Indigo 500
+    const Color(0xFF8B5CF6), // Violet 500
+    const Color(0xFFA855F7), // Purple 500
+    const Color(0xFFD946EF), // Fuchsia 500
+    const Color(0xFFEC4899), // Pink 500
+    const Color(0xFFF43F5E), // Rose 500
   ];
 
   @override

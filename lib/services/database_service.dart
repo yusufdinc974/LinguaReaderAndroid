@@ -635,6 +635,9 @@ class DatabaseService {
       // --- 5. Import Settings (Replace) ---
       if (data['userSettings'] != null) {
         for (var item in data['userSettings']) {
+          // Skip target_language to preserve local preference
+          if (item['key'] == 'target_language') continue;
+          
           await txn.insert('user_settings', item, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
