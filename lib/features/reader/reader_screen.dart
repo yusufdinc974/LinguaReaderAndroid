@@ -1,5 +1,6 @@
 
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -30,6 +31,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   double? _preservedZoomLevel;
   List<int> _selectedListIds = []; // Empty means ALL lists
   List<Map<String, dynamic>> _availableLists = [];
+  Timer? _selectionDebounce;
+  List<Annotation> _tempAnnotations = [];
+  String? _tempSelectedText; // Persist text after clearSelection
 
   @override
   void initState() {
@@ -154,6 +158,52 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  Future<void> _addTemporaryHighlight(String text) async {
+    if (_pdfBytes == null) return;
+    try {
+      // Clear previous temp highlights
+      _clearTemporaryHighlights();
+      
+      final matches = await PdfHighlightService.findText(_pdfBytes!, text);
+      if (matches.isEmpty) return;
+
+      // Filter matches? 
+      // Ideally we should filter by current page or intersection, but for now show all 
+      // or limits to visible page if possible. (PdfHighlightService finds all).
+      
+      // Group by page
+      final Map<int, List<MatchedItem>> matchesByPage = {};
+      for (final match in matches) {
+        matchesByPage.putIfAbsent(match.pageIndex, () => []).add(match);
+      }
+
+      for (final entry in matchesByPage.entries) {
+        final pageIndex = entry.key;
+        final pageMatches = entry.value;
+        
+        final textLines = pageMatches.map((m) => 
+          PdfTextLine(m.bounds, text, pageIndex + 1)
+        ).toList();
+        
+        final annotation = HighlightAnnotation(textBoundsCollection: textLines);
+        annotation.color = Colors.blue.withOpacity(0.3); // Selection color
+        
+        _pdfViewerController.addAnnotation(annotation);
+        _tempAnnotations.add(annotation);
+      }
+    } catch (e) {
+      debugPrint('Error adding temp highlight: $e');
+    }
+  }
+
+  void _clearTemporaryHighlights() {
+    for (final annotation in _tempAnnotations) {
+      _pdfViewerController.removeAnnotation(annotation);
+    }
+    _tempAnnotations.clear();
+    _tempSelectedText = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -202,12 +252,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
               _applyHighlightOverlays();
             },
             onTextSelectionChanged: (PdfTextSelectionChangedDetails details) {
-              setState(() {
-                if (details.selectedText != null && details.selectedText!.trim().isNotEmpty) {
-                  _selectionDetails = details;
-                } else {
-                  _selectionDetails = null;
-                }
+              _selectionDebounce?.cancel();
+              
+              if (details.selectedText == null || details.selectedText!.trim().isEmpty) {
+                 // Cleared
+                 if (_tempSelectedText == null) {
+                    setState(() => _selectionDetails = null);
+                 }
+                 return;
+              }
+
+              // User is selecting... wait for pause
+              _selectionDebounce = Timer(const Duration(milliseconds: 600), () {
+                 final text = details.selectedText!;
+                 _tempSelectedText = text;
+                 
+                 // Clear system selection to hide black menu
+                 _pdfViewerController.clearSelection();
+                 
+                 // Show our custom UI and fake highlight
+                 setState(() {
+                   _selectionDetails = details;
+                 });
+                 _addTemporaryHighlight(text);
               });
             },
           ),
@@ -231,10 +298,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
                        }),
                        _buildMenuButton(Icons.copy, 'Copy', () {
                          _pdfViewerController.clearSelection();
+                         _clearTemporaryHighlights();
                          setState(() => _selectionDetails = null);
                        }),
                        _buildMenuButton(Icons.close, 'Cancel', () {
                          _pdfViewerController.clearSelection();
+                         _clearTemporaryHighlights();
                          setState(() => _selectionDetails = null);
                        }),
                     ],
@@ -355,6 +424,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     
     // Clear selection UI
     _pdfViewerController.clearSelection();
+    _clearTemporaryHighlights();
     setState(() {
       _selectionDetails = null;
     });
