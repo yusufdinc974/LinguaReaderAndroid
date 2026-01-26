@@ -52,6 +52,7 @@ class DatabaseService {
     if (apiKey.isEmpty) {
       await db.insert('user_settings', {'key': 'deepl_api_key', 'value': ''});
     }
+  }
 
   Future<void> _onConfigure(Database db) async {
     await db.execute('PRAGMA foreign_keys = ON');
