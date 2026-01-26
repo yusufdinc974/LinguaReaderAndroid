@@ -16,7 +16,7 @@ class TranslationService {
   Future<TranslationResult> translateText(String text, {String sourceLang = 'auto'}) async {
     // 1. Get Settings
     String? deepLKey = await _databaseService.getSetting('deepl_api_key');
-    String targetLang = await _databaseService.getSetting('target_language') ?? 'EN';
+    String targetLang = await _databaseService.getSetting('target_language') ?? 'en';
 
     print('DEBUG: Translating "$text" to $targetLang');
     if (deepLKey != null && deepLKey.isNotEmpty) {
@@ -75,7 +75,7 @@ class TranslationService {
     const String baseUrl = 'https://api.mymemory.translated.net/get';
     try {
       final source = sourceLang == 'auto' ? 'autodetect' : sourceLang;
-      final langPair = '$source|$targetLang';
+      final langPair = '$source|${targetLang.toLowerCase()}';
       
       final uri = Uri.parse(baseUrl).replace(queryParameters: {
         'q': text,

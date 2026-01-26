@@ -20,38 +20,13 @@ class DatabaseService {
   Future<Database> _initDatabase() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = join(documentsDirectory.path, 'linguareader.db');
-    final db = await openDatabase(
+    return await openDatabase(
       path,
       version: 2,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
-    
-    await _ensureDefaults(db);
-    return db;
-  }
-
-  Future<void> _ensureDefaults(Database db) async {
-    // Ensure target_language is set (Default: 'en')
-    final List<Map<String, dynamic>> targetLang = await db.query(
-      'user_settings',
-      where: 'key = ?',
-      whereArgs: ['target_language'],
-    );
-    if (targetLang.isEmpty) {
-      await db.insert('user_settings', {'key': 'target_language', 'value': 'en'});
-    }
-
-    // Ensure deepl_api_key is set (Default: '') to explicitly enable MyMemory fallback logic
-    final List<Map<String, dynamic>> apiKey = await db.query(
-      'user_settings',
-      where: 'key = ?',
-      whereArgs: ['deepl_api_key'],
-    );
-    if (apiKey.isEmpty) {
-      await db.insert('user_settings', {'key': 'deepl_api_key', 'value': ''});
-    }
   }
 
   Future<void> _onConfigure(Database db) async {
