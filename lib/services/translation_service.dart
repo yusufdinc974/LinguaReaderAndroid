@@ -16,10 +16,14 @@ class TranslationService {
   Future<TranslationResult> translateText(String text, {String sourceLang = 'auto'}) async {
     // 1. Get Settings
     String? deepLKey = await _databaseService.getSetting('deepl_api_key');
-    String targetLang = await _databaseService.getSetting('target_language') ?? 'en';
+    String? targetLang = await _databaseService.getSetting('target_language');
+    if (targetLang == null || targetLang.trim().isEmpty) {
+      targetLang = 'tr';
+      print('DEBUG: target_language was empty/null, defaulting to "tr"');
+    }
 
     print('DEBUG: Translating "$text" to $targetLang');
-    if (deepLKey != null && deepLKey.isNotEmpty) {
+    if (deepLKey != null && deepLKey.trim().isNotEmpty) {
       print('DEBUG: Using DeepL API Key: ${deepLKey.substring(0, 5)}...');
       try {
         return await _translateWithDeepL(text, deepLKey, targetLang);

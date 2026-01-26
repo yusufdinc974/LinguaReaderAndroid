@@ -76,7 +76,7 @@ class _TranslationSheetState extends State<TranslationSheet> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = "Could not translate";
+          _error = "Could not translate: $e";
           _isLoading = false;
         });
       }

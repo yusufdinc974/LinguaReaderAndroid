@@ -116,8 +116,9 @@ class DatabaseService {
 
 
     // Default Settings
-    await db.insert('user_settings', {'key': 'target_language', 'value': 'en'});
-    await db.insert('user_settings', {'key': 'theme', 'value': 'dark'});
+    // Default Settings
+    await db.insert('user_settings', {'key': 'target_language', 'value': 'tr'}, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert('user_settings', {'key': 'theme', 'value': 'dark'}, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   // --- Settings ---
@@ -261,12 +262,15 @@ class DatabaseService {
     String? pdfName,
   }) async {
     final db = await database;
+    // 0. Get target language
+    final targetLang = await getSetting('target_language') ?? 'tr';
+
     // 1. Insert into words table
     final wordId = await db.insert('words', {
       'word': word,
       'translation': translation,
-      'source_language': 'auto', // Could be passed in
-      'target_language': 'en',   // Could be passed in or from settings
+      'source_language': 'auto', 
+      'target_language': targetLang, 
       'sentence_context': context,
       'pdf_name': pdfName,
     });
