@@ -1,4 +1,3 @@
-
 import 'dart:io';
 import 'dart:async';
 import 'dart:typed_data';
@@ -22,11 +21,11 @@ class ReaderScreen extends StatefulWidget {
 class _ReaderScreenState extends State<ReaderScreen> {
   final PdfViewerController _pdfViewerController = PdfViewerController();
   final DatabaseService _databaseService = DatabaseService();
-  
+
   PdfTextSelectionChangedDetails? _selectionDetails;
-  Uint8List? _pdfBytes;  // Original PDF bytes (never modified)
+  Uint8List? _pdfBytes; // Original PDF bytes (never modified)
   bool _isLoading = true;
-  bool _pdfLoaded = false;  // Track if PDF document is loaded in viewer
+  bool _pdfLoaded = false; // Track if PDF document is loaded in viewer
   Offset? _preservedScrollOffset;
   double? _preservedZoomLevel;
   List<int> _selectedListIds = []; // Empty means ALL lists
@@ -51,7 +50,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
       // 2. Fetch available lists for filter
       _availableLists = await _databaseService.getWordLists();
-      
+
       // Initialize with all list IDs so UI matches behavior (All checked initially)
       _selectedListIds = _availableLists.map((l) => l['id'] as int).toList();
 
@@ -59,7 +58,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         setState(() {
           _pdfBytes = rawBytes;
           _isLoading = false;
-          _pdfLoaded = false;  // Will be set true when document loads
+          _pdfLoaded = false; // Will be set true when document loads
         });
       }
     } catch (e) {
@@ -74,23 +73,22 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// This uses controller annotations (not baked into PDF bytes)
   Future<void> _applyHighlightOverlays() async {
     if (_pdfBytes == null || !_pdfLoaded) return;
-    
+
     try {
       // 1. CLEAR all existing overlay annotations first
       _pdfViewerController.removeAllAnnotations();
 
       // If explicit empty selection, show NOTHING
       if (_selectedListIds.isEmpty) {
-        return; 
+        return;
       }
-      
+
       // 2. Get words based on filter
-      final wordsData = await _databaseService.getWordsWithColors(
-        listIds: _selectedListIds
-      );
-      
+      final wordsData =
+          await _databaseService.getWordsWithColors(listIds: _selectedListIds);
+
       if (wordsData.isEmpty) return;
-      
+
       // 3. Convert to WordColor objects
       final words = wordsData.map((data) {
         final colorStr = data['color'] as String? ?? '0xFF2196F3';
@@ -101,21 +99,21 @@ class _ReaderScreenState extends State<ReaderScreen> {
             if (hex.length == 6) {
               color = Color(int.parse('FF$hex', radix: 16));
             } else if (hex.length == 8) {
-               color = Color(int.parse(hex, radix: 16));
+              color = Color(int.parse(hex, radix: 16));
             } else {
-               color = const Color(0xFF2196F3);
+              color = const Color(0xFF2196F3);
             }
           } else if (colorStr.startsWith('0x')) {
-             color = Color(int.parse(colorStr));
+            color = Color(int.parse(colorStr));
           } else {
-             color = Color(int.parse(colorStr));
+            color = Color(int.parse(colorStr));
           }
         } catch (e) {
-           color = const Color(0xFF2196F3);
+          color = const Color(0xFF2196F3);
         }
         return WordColor(data['word'] as String, color);
       }).toList();
-      
+
       // 4. Add overlay annotations for each word
       for (final wordColor in words) {
         await _addWordHighlightOverlay(wordColor);
@@ -128,29 +126,30 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Add highlight overlay for a single word
   Future<void> _addWordHighlightOverlay(WordColor wordColor) async {
     if (_pdfBytes == null || wordColor.word.trim().isEmpty) return;
-    
+
     try {
-      final matches = await PdfHighlightService.findText(_pdfBytes!, wordColor.word);
-      
+      final matches =
+          await PdfHighlightService.findText(_pdfBytes!, wordColor.word);
+
       // Group matches by page
       final Map<int, List<MatchedItem>> matchesByPage = {};
       for (final match in matches) {
         matchesByPage.putIfAbsent(match.pageIndex, () => []).add(match);
       }
-      
+
       // Add annotation for each page
       for (final entry in matchesByPage.entries) {
         final pageIndex = entry.key;
         final pageMatches = entry.value;
-        
-        final textLines = pageMatches.map((m) => 
-          PdfTextLine(m.bounds, wordColor.word, pageIndex + 1)
-        ).toList();
-        
+
+        final textLines = pageMatches
+            .map((m) => PdfTextLine(m.bounds, wordColor.word, pageIndex + 1))
+            .toList();
+
         final annotation = HighlightAnnotation(textBoundsCollection: textLines);
         annotation.color = wordColor.color;
         annotation.opacity = 0.4;
-        
+
         _pdfViewerController.addAnnotation(annotation);
       }
     } catch (e) {
@@ -163,14 +162,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
     try {
       // Clear previous temp highlights
       _clearTemporaryHighlights();
-      
+
       final matches = await PdfHighlightService.findText(_pdfBytes!, text);
       if (matches.isEmpty) return;
 
-      // Filter matches? 
-      // Ideally we should filter by current page or intersection, but for now show all 
+      // Filter matches?
+      // Ideally we should filter by current page or intersection, but for now show all
       // or limits to visible page if possible. (PdfHighlightService finds all).
-      
+
       // Group by page
       final Map<int, List<MatchedItem>> matchesByPage = {};
       for (final match in matches) {
@@ -180,14 +179,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
       for (final entry in matchesByPage.entries) {
         final pageIndex = entry.key;
         final pageMatches = entry.value;
-        
-        final textLines = pageMatches.map((m) => 
-          PdfTextLine(m.bounds, text, pageIndex + 1)
-        ).toList();
-        
+
+        final textLines = pageMatches
+            .map((m) => PdfTextLine(m.bounds, text, pageIndex + 1))
+            .toList();
+
         final annotation = HighlightAnnotation(textBoundsCollection: textLines);
         annotation.color = Colors.blue.withOpacity(0.3); // Selection color
-        
+
         _pdfViewerController.addAnnotation(annotation);
         _tempAnnotations.add(annotation);
       }
@@ -231,7 +230,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
             },
           ),
           IconButton(
-            icon: Icon(_selectedListIds.isEmpty ? Icons.filter_alt_off : Icons.filter_alt),
+            icon: Icon(_selectedListIds.isEmpty
+                ? Icons.filter_alt_off
+                : Icons.filter_alt),
             onPressed: _showHighlightFilterDialog,
           ),
         ],
@@ -240,7 +241,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
         children: [
           SfPdfViewer.memory(
             _pdfBytes!,
-            key: ValueKey(widget.filePath),  // Stable key based on file path
+            key: ValueKey(widget.filePath), // Stable key based on file path
             controller: _pdfViewerController,
             initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
             initialZoomLevel: _preservedZoomLevel ?? 1.0,
@@ -253,32 +254,32 @@ class _ReaderScreenState extends State<ReaderScreen> {
             },
             onTextSelectionChanged: (PdfTextSelectionChangedDetails details) {
               _selectionDebounce?.cancel();
-              
-              if (details.selectedText == null || details.selectedText!.trim().isEmpty) {
-                 // Cleared
-                 if (_tempSelectedText == null) {
-                    setState(() => _selectionDetails = null);
-                 }
-                 return;
+
+              if (details.selectedText == null ||
+                  details.selectedText!.trim().isEmpty) {
+                // Cleared
+                if (_tempSelectedText == null) {
+                  setState(() => _selectionDetails = null);
+                }
+                return;
               }
 
               // User is selecting... wait for pause
               _selectionDebounce = Timer(const Duration(milliseconds: 600), () {
-                 final text = details.selectedText!;
-                 _tempSelectedText = text;
-                 
-                 // Clear system selection to hide black menu
-                 _pdfViewerController.clearSelection();
-                 
-                 // Show our custom UI and fake highlight
-                 setState(() {
-                   _selectionDetails = details;
-                 });
-                 _addTemporaryHighlight(text);
+                final text = details.selectedText!;
+                _tempSelectedText = text;
+
+                // Clear system selection to hide black menu
+                _pdfViewerController.clearSelection();
+
+                // Show our custom UI and fake highlight
+                setState(() {
+                  _selectionDetails = details;
+                });
+                _addTemporaryHighlight(text);
               });
             },
           ),
-          
           if (_selectionDetails != null)
             Positioned(
               left: 16,
@@ -287,25 +288,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
               child: Card(
                 elevation: 8,
                 color: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                      vertical: 8.0, horizontal: 16.0),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                       _buildMenuButton(Icons.translate, 'Translate', () {
-                         _showTranslation(_selectionDetails!.selectedText!);
-                       }),
-                       _buildMenuButton(Icons.copy, 'Copy', () {
-                         _pdfViewerController.clearSelection();
-                         _clearTemporaryHighlights();
-                         setState(() => _selectionDetails = null);
-                       }),
-                       _buildMenuButton(Icons.close, 'Cancel', () {
-                         _pdfViewerController.clearSelection();
-                         _clearTemporaryHighlights();
-                         setState(() => _selectionDetails = null);
-                       }),
+                      _buildMenuButton(Icons.translate, 'Translate', () {
+                        _showTranslation(_selectionDetails!.selectedText!);
+                      }),
+                      _buildMenuButton(Icons.copy, 'Copy', () {
+                        _pdfViewerController.clearSelection();
+                        _clearTemporaryHighlights();
+                        setState(() => _selectionDetails = null);
+                      }),
+                      _buildMenuButton(Icons.close, 'Cancel', () {
+                        _pdfViewerController.clearSelection();
+                        _clearTemporaryHighlights();
+                        setState(() => _selectionDetails = null);
+                      }),
                     ],
                   ),
                 ),
@@ -324,7 +327,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
         children: [
           Icon(icon, color: AppColors.primary),
           const SizedBox(height: 4),
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.primary)),
+          Text(label,
+              style: const TextStyle(fontSize: 12, color: AppColors.primary)),
         ],
       ),
     );
@@ -337,14 +341,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
     await showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Highlight Filter'),
-              content: SizedBox(
-                width: double.maxFinite,
-                child: _availableLists.isEmpty 
-                  ? const Text('No lists available.') 
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Highlight Filter'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: _availableLists.isEmpty
+                  ? const Text('No lists available.')
                   : ListView.builder(
                       shrinkWrap: true,
                       itemCount: _availableLists.length,
@@ -352,7 +355,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         final list = _availableLists[index];
                         final id = list['id'] as int;
                         final isSelected = tempSelected.contains(id);
-                        
+
                         return CheckboxListTile(
                           title: Text(list['name']),
                           value: isSelected,
@@ -368,39 +371,39 @@ class _ReaderScreenState extends State<ReaderScreen> {
                         );
                       },
                     ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    tempSelected.clear();
+                    tempSelected
+                        .addAll(_availableLists.map((l) => l['id'] as int));
+                  });
+                },
+                child: const Text('Select All'),
               ),
-              actions: [
-                TextButton(
-                  onPressed: () { 
-                    setDialogState(() {
-                      tempSelected.clear();
-                      tempSelected.addAll(_availableLists.map((l) => l['id'] as int));
-                    });
-                  },
-                  child: const Text('Select All'),
-                ),
-                TextButton(
-                  onPressed: () { 
-                    setDialogState(() {
-                      tempSelected.clear();
-                    });
-                  },
-                  child: const Text('Clear All'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    _selectedListIds = tempSelected.toList();
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
-          }
-        );
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    tempSelected.clear();
+                  });
+                },
+                child: const Text('Clear All'),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  _selectedListIds = tempSelected.toList();
+                  Navigator.pop(context);
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        });
       },
     );
-    
+
     // Apply new filter (clear old annotations and add new ones)
     await _applyHighlightOverlays();
   }
@@ -411,17 +414,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.4,
+        initialChildSize: 0.55,
         minChildSize: 0.3,
-        maxChildSize: 0.8,
+        maxChildSize: 1.0,
+        expand: false,
         builder: (_, controller) => TranslationSheet(
           word: text,
-          sentence: "", 
+          sentence: "",
           scrollController: controller,
         ),
       ),
     );
-    
+
     // Clear selection UI
     _pdfViewerController.clearSelection();
     _clearTemporaryHighlights();

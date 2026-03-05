@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../services/database_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/subscription_service.dart';
 import '../../core/constants/app_colors.dart';
 import '../../main.dart';
-import 'data_management_screen.dart';
+import '../auth/auth_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -18,6 +19,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   final _apiKeyController = TextEditingController();
   bool _isLoading = true;
   String _targetLanguage = 'EN';
+  String _turengLanguagePair = 'english-turkish';
+
+  final Map<String, String> _turengLanguagePairs = {
+    'English ↔ Turkish': 'english-turkish',
+    'German ↔ Turkish': 'german-turkish',
+    'French ↔ Turkish': 'french-turkish',
+    'Spanish ↔ Turkish': 'spanish-turkish',
+  };
 
   final Map<String, String> _supportedLanguages = {
     'English': 'EN',
@@ -44,14 +53,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     setState(() => _isLoading = true);
     final apiKey = await _databaseService.getSetting('deepl_api_key');
     final targetLang = await _databaseService.getSetting('target_language');
+    final turengPair = await _databaseService.getSetting('tureng_language_pair');
     
     if (mounted) {
-      if (apiKey != null) {
-        _apiKeyController.text = apiKey;
-      }
-      if (targetLang != null) {
-        _targetLanguage = targetLang.toUpperCase();
-      }
+      if (apiKey != null) _apiKeyController.text = apiKey;
+      if (targetLang != null) _targetLanguage = targetLang.toUpperCase();
+      if (turengPair != null) _turengLanguagePair = turengPair;
       setState(() => _isLoading = false);
     }
   }
@@ -59,6 +66,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Future<void> _saveSettings() async {
     await _databaseService.saveSetting('deepl_api_key', _apiKeyController.text.trim());
     await _databaseService.saveSetting('target_language', _targetLanguage);
+    await _databaseService.saveSetting('tureng_language_pair', _turengLanguagePair);
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -187,6 +195,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
 
                 const SizedBox(height: 32),
+
+                // ── DICTIONARY (TURENG) ─────────────────────
+                const Text(
+                  'Dictionary (Tureng)',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Select the language pair for dictionary lookups.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _turengLanguagePair,
+                  decoration: const InputDecoration(
+                    labelText: 'Language Pair',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.menu_book_outlined),
+                  ),
+                  items: _turengLanguagePairs.entries.map((entry) {
+                    return DropdownMenuItem(value: entry.value, child: Text(entry.key));
+                  }).toList(),
+                  onChanged: (value) { if (value != null) setState(() => _turengLanguagePair = value); },
+                ),
+
+                const SizedBox(height: 32),
                 ElevatedButton(
                   onPressed: _saveSettings,
                   style: ElevatedButton.styleFrom(
@@ -197,72 +235,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 
                 const SizedBox(height: 32),
                 const SizedBox(height: 32),
-                const Text(
-                  'About',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.book_outlined, color: AppColors.primary, size: 32),
-                            SizedBox(width: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'LinguaReader',
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                                ),
-                                Text(
-                                  'Version 1.0.0',
-                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'A cross-platform PDF reader tailored for language learners. Translate words instantly and review them later.',
-                          style: TextStyle(color: AppColors.textPrimary),
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Open Source',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'This project is open source and free. Contributions are welcome!',
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                        ),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _launchGitHub,
-                            icon: const Icon(Icons.code),
-                            label: const Text('View on GitHub'),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        const Center(
-                          child: Text(
-                            'Created by Yusuf Dinc',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 10),
-                          ),
-                        ),
-                      ],
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _signOut(context),
+                    icon: const Icon(Icons.logout, color: AppColors.error),
+                    label: const Text('Sign Out', style: TextStyle(color: AppColors.error)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.error),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
                   ),
                 ),
@@ -272,21 +253,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Future<void> _launchGitHub() async {
-    const url = 'https://github.com/yusufdinc974/LinguaReader';
-    final uri = Uri.parse(url);
+  Future<void> _signOut(BuildContext context) async {
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not launch URL')),
-          );
-        }
+      await SubscriptionService.logoutUser();
+      await AuthService().signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthScreen()),
+          (route) => false,
+        );
       }
     } catch (e) {
-      // Ignore
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error signing out: $e')),
+        );
+      }
     }
   }
 }

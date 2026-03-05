@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/database_service.dart';
+import '../../services/sync_service.dart';
 
 // Familiarity level colors matching desktop
 const Map<int, Color> levelColors = {
@@ -76,15 +77,16 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
           final wordText = (word['word'] as String).toLowerCase();
           final translation = (word['translation'] as String).toLowerCase();
           return wordText.contains(query.toLowerCase()) ||
-                 translation.contains(query.toLowerCase());
+              translation.contains(query.toLowerCase());
         }).toList();
       }
     });
   }
 
   Future<void> _showMoveDialog(Map<String, dynamic> word) async {
-    final otherLists = _allLists.where((l) => l['id'] != widget.listId).toList();
-    
+    final otherLists =
+        _allLists.where((l) => l['id'] != widget.listId).toList();
+
     if (otherLists.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No other lists available')),
@@ -128,23 +130,25 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
     }
   }
 
-  Future<void> _moveWord(Map<String, dynamic> word, Map<String, dynamic> targetList) async {
+  Future<void> _moveWord(
+      Map<String, dynamic> word, Map<String, dynamic> targetList) async {
     try {
       final db = await _databaseService.database;
-      
+
       // Add to new list
       await db.insert('word_list_items', {
         'word_list_id': targetList['id'],
         'word_id': word['id'],
       });
-      
+
       // Remove from current list
       await db.delete(
         'word_list_items',
         where: 'word_list_id = ? AND word_id = ?',
         whereArgs: [widget.listId, word['id']],
       );
-      
+      await SyncService.pushToCloud();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Moved to "${targetList['name']}"')),
@@ -199,14 +203,14 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                 hintText: 'Search words...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () {
-                        _searchController.clear();
-                        _filterWords('');
-                      },
-                    )
-                  : null,
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                          _filterWords('');
+                        },
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -216,7 +220,7 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
               onChanged: _filterWords,
             ),
           ),
-          
+
           // Word Count
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -241,148 +245,184 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 8),
-          
+
           // Word List
           Expanded(
             child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _filteredWords.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          _searchQuery.isNotEmpty ? Icons.search_off : Icons.school_outlined,
-                          size: 64,
-                          color: AppColors.textSecondary,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          _searchQuery.isNotEmpty 
-                            ? 'No words match your search'
-                            : 'No words in this list yet',
-                          style: const TextStyle(color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredWords.length,
-                    itemBuilder: (context, index) {
-                      final word = _filteredWords[index];
-                      final familiarityLevel = word['mastery_level'] as int? ?? 1;
-                      
-                      return Dismissible(
-                        key: Key(word['id'].toString()),
-                        direction: DismissDirection.endToStart,
-                        background: Container(
-                          color: Colors.red,
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 20),
-                          child: const Icon(Icons.delete, color: Colors.white),
-                        ),
-                        confirmDismiss: (direction) async {
-                          return await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Remove Word?'),
-                              content: Text('Remove "${word['word']}" from this list?'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, false),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                  child: const Text('Remove'),
-                                ),
-                              ],
+                ? const Center(child: CircularProgressIndicator())
+                : _filteredWords.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _searchQuery.isNotEmpty
+                                  ? Icons.search_off
+                                  : Icons.school_outlined,
+                              size: 64,
+                              color: AppColors.textSecondary,
                             ),
-                          );
-                        },
-                        onDismissed: (direction) async {
-                          final wordId = word['id'];
-                          setState(() {
-                            _words.removeWhere((w) => w['id'] == wordId);
-                            _filteredWords.removeAt(index);
-                          });
-                          
-                          await _databaseService.removeWordFromList(widget.listId, wordId);
-                          
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Word removed from list')),
-                            );
-                          }
-                        },
-                        child: Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                            leading: Container(
-                              width: 12,
-                              height: 12,
-                              decoration: BoxDecoration(
-                                color: _getFamiliarityColor(familiarityLevel),
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: _getFamiliarityColor(familiarityLevel).withOpacity(0.4),
-                                    blurRadius: 4,
-                                  ),
-                                ],
-                              ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _searchQuery.isNotEmpty
+                                  ? 'No words match your search'
+                                  : 'No words in this list yet',
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary),
                             ),
-                            title: Text(
-                              word['word'],
-                              style: const TextStyle(fontWeight: FontWeight.bold),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _filteredWords.length,
+                        itemBuilder: (context, index) {
+                          final word = _filteredWords[index];
+                          final familiarityLevel =
+                              word['mastery_level'] as int? ?? 1;
+
+                          return Dismissible(
+                            key: Key(word['id'].toString()),
+                            direction: DismissDirection.endToStart,
+                            background: Container(
+                              color: Colors.red,
+                              alignment: Alignment.centerRight,
+                              padding: const EdgeInsets.only(right: 20),
+                              child:
+                                  const Icon(Icons.delete, color: Colors.white),
                             ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(word['translation']),
-                                if (word['source_language'] != null && word['target_language'] != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 4),
-                                    child: Text(
-                                      '${word['source_language']} → ${word['target_language']}',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: AppColors.textSecondary,
-                                      ),
+                            confirmDismiss: (direction) async {
+                              return await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Remove Word?'),
+                                  content: Text(
+                                      'Remove "${word['word']}" from this list?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: const Text('Cancel'),
                                     ),
-                                  ),
-                              ],
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              icon: const Icon(Icons.more_vert, color: AppColors.textSecondary),
-                              onSelected: (value) {
-                                if (value == 'move') {
-                                  _showMoveDialog(word);
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'move',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.drive_file_move_outline, size: 20),
-                                      SizedBox(width: 8),
-                                      Text('Move to...'),
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      style: TextButton.styleFrom(
+                                          foregroundColor: Colors.red),
+                                      child: const Text('Remove'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            onDismissed: (direction) async {
+                              final wordId = word['id'];
+                              setState(() {
+                                _words.removeWhere((w) => w['id'] == wordId);
+                                _filteredWords.removeAt(index);
+                              });
+
+                              await _databaseService.removeWordFromList(
+                                  widget.listId, wordId);
+                              await SyncService.pushToCloud();
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Word removed from list')),
+                                );
+                              }
+                            },
+                            child: Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: ListTile(
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                leading: Container(
+                                  width: 12,
+                                  height: 12,
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _getFamiliarityColor(familiarityLevel),
+                                    shape: BoxShape.circle,
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: _getFamiliarityColor(
+                                                familiarityLevel)
+                                            .withOpacity(0.4),
+                                        blurRadius: 4,
+                                      ),
                                     ],
                                   ),
                                 ),
-                              ],
+                                title: Text(
+                                  word['word'],
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold),
+                                ),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(word['translation']),
+                                    if (word['note'] != null &&
+                                        (word['note'] as String)
+                                            .trim()
+                                            .isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Text(
+                                          word['note'],
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    if (word['source_language'] != null &&
+                                        word['target_language'] != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Text(
+                                          '${word['source_language']} → ${word['target_language']}',
+                                          style: const TextStyle(
+                                            fontSize: 10,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                trailing: PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert,
+                                      color: AppColors.textSecondary),
+                                  onSelected: (value) {
+                                    if (value == 'move') {
+                                      _showMoveDialog(word);
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(
+                                      value: 'move',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.drive_file_move_outline,
+                                              size: 20),
+                                          SizedBox(width: 8),
+                                          Text('Move to...'),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

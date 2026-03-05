@@ -11,7 +11,7 @@ class TextViewWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     // Split text by spaces but keep punctuation attached or handle generically
     // For simplicity, we split by space and simple punctuation handling could be added
-    final words = text.split(RegExp(r'(\s+)')); 
+    final words = text.split(RegExp(r'(\s+)'));
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
@@ -54,9 +54,17 @@ class TextViewWidget extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => TranslationSheet(
-        word: lookupWord,
-        sentence: "Context extraction from text...", // Advanced: Find sentence in 'text'
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        minChildSize: 0.3,
+        maxChildSize: 1.0,
+        expand: false,
+        builder: (_, controller) => TranslationSheet(
+          word: lookupWord,
+          sentence:
+              "Context extraction from text...", // Advanced: Find sentence in 'text'
+          scrollController: controller,
+        ),
       ),
     );
   }

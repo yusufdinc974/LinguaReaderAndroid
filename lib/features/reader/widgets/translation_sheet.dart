@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../services/translation_service.dart';
 import '../../../services/database_service.dart';
 import '../../../services/pdf_highlight_service.dart';
+import '../../../services/tureng_service.dart';
+import '../../../services/gemini_service.dart';
+import '../../../services/sync_service.dart';
 
 // Familiarity level colors matching desktop
 const Map<int, Color> levelColors = {
@@ -37,31 +41,130 @@ class TranslationSheet extends StatefulWidget {
   State<TranslationSheet> createState() => _TranslationSheetState();
 }
 
-class _TranslationSheetState extends State<TranslationSheet> {
+class _TranslationSheetState extends State<TranslationSheet>
+    with SingleTickerProviderStateMixin {
   final _translationService = TranslationService();
   final _databaseService = DatabaseService();
+  final _turengService = TurengService();
+  final _geminiService = GeminiService();
+
+  late final TabController _tabController;
+
+  // ── Translate tab state ──
   String? _translation;
   String? _source;
-  bool _isLoading = true;
-  String? _error;
+  bool _isTranslating = true;
+  String? _translationError;
   bool _isSaving = false;
-  int _selectedLevel = 1; // Default to Unknown
+  int _selectedLevel = 1;
   List<Map<String, dynamic>> _wordLists = [];
   bool _showCreateListForm = false;
   final _newListNameController = TextEditingController();
+  final _noteController = TextEditingController();
+
+  // ── Dictionary tab state ──
+  List<TurengEntry>? _turengResults;
+  bool _isLookingUp = false;
+  String? _turengError;
+  String _turengLanguagePair = 'english-turkish';
+
+  // ── Gemini tab state ──
+  String? _geminiResult;
+  bool _isAskingGemini = false;
+  String?
+      _geminiError; // 'not_logged_in', 'premium_required', or free-form error
+  bool _geminiTabLoaded = false;
+  String _geminiTargetLanguage = 'Turkish';
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _translate();
     _loadWordLists();
+    _loadUserSettings();
+    _loadExistingNote();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
     _newListNameController.dispose();
+    _noteController.dispose();
     super.dispose();
   }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) return;
+    // Lazy-load Dictionary on first switch
+    if (_tabController.index == 1 && _turengResults == null && !_isLookingUp) {
+      _lookupDictionary();
+    }
+    // Lazy-load Gemini on first switch
+    if (_tabController.index == 2 && !_geminiTabLoaded) {
+      _askGemini();
+    }
+    setState(() {});
+  }
+
+  Future<void> _loadUserSettings() async {
+    final pair = await _databaseService.getSetting('tureng_language_pair');
+    final targetLanguageCode =
+        await _databaseService.getSetting('target_language');
+
+    final mappedTarget = _languageCodeToName(targetLanguageCode);
+
+    if (mounted && pair != null) {
+      setState(() {
+        _turengLanguagePair = pair;
+        _geminiTargetLanguage = mappedTarget;
+      });
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _geminiTargetLanguage = mappedTarget;
+      });
+    }
+  }
+
+  String _languageCodeToName(String? code) {
+    switch ((code ?? '').toLowerCase()) {
+      case 'tr':
+        return 'Turkish';
+      case 'en':
+        return 'English';
+      case 'de':
+        return 'German';
+      case 'fr':
+        return 'French';
+      case 'es':
+        return 'Spanish';
+      case 'it':
+        return 'Italian';
+      case 'pt':
+        return 'Portuguese';
+      case 'ru':
+        return 'Russian';
+      case 'ja':
+        return 'Japanese';
+      case 'ko':
+        return 'Korean';
+      case 'zh':
+      case 'zh-cn':
+      case 'zh-tw':
+        return 'Chinese';
+      case 'ar':
+        return 'Arabic';
+      default:
+        return 'Turkish';
+    }
+  }
+
+  // ── Translate ──────────────────────────────────────────────────────────────
 
   Future<void> _translate() async {
     try {
@@ -70,14 +173,14 @@ class _TranslationSheetState extends State<TranslationSheet> {
         setState(() {
           _translation = result.translatedText;
           _source = result.source;
-          _isLoading = false;
+          _isTranslating = false;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = "Could not translate: $e";
-          _isLoading = false;
+          _translationError = 'Could not translate: $e';
+          _isTranslating = false;
         });
       }
     }
@@ -85,9 +188,14 @@ class _TranslationSheetState extends State<TranslationSheet> {
 
   Future<void> _loadWordLists() async {
     final lists = await _databaseService.getWordLists();
-    if (mounted) {
-      setState(() => _wordLists = lists);
-    }
+    if (mounted) setState(() => _wordLists = lists);
+  }
+
+  Future<void> _loadExistingNote() async {
+    final existingNote =
+        await _databaseService.getLatestNoteForWord(widget.word);
+    if (!mounted || existingNote == null || existingNote.trim().isEmpty) return;
+    _noteController.text = existingNote;
   }
 
   Future<Color> _parseColor(String? colorStr) async {
@@ -106,317 +214,6 @@ class _TranslationSheetState extends State<TranslationSheet> {
     }
   }
 
-  Future<void> _createNewList() async {
-    final name = _newListNameController.text.trim();
-    if (name.isEmpty) return;
-
-    final listId = await _databaseService.createWordList(name, '');
-    _newListNameController.clear();
-    await _loadWordLists();
-    
-    if (mounted) {
-      setState(() => _showCreateListForm = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Created list "$name"')),
-      );
-    }
-  }
-
-  Future<void> _saveWord(int listId, String listName, String? colorStr) async {
-    if (_translation == null) return;
-    
-    setState(() => _isSaving = true);
-    
-    try {
-      await _databaseService.addWord(
-        listId: listId,
-        word: widget.word,
-        translation: _translation!,
-        context: widget.sentence,
-      );
-      
-      // Update familiarity level
-      final db = await _databaseService.database;
-      await db.update(
-        'word_familiarity',
-        {'familiarity_level': _selectedLevel},
-        where: 'word_lower = ?',
-        whereArgs: [widget.word.toLowerCase()],
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Word saved to $listName')),
-        );
-        
-        final color = await _parseColor(colorStr);
-        Navigator.pop(context, WordColor(widget.word, color));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24.0),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      child: ListView(
-        controller: widget.scrollController,
-        children: [
-          // Word and translation
-          Text(
-            widget.word,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator())
-          else if (_error != null)
-            Text(_error!, style: const TextStyle(color: AppColors.error))
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _translation ?? '',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    color: AppColors.secondary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                if (_source != null) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.translate, size: 12, color: AppColors.textSecondary.withOpacity(0.7)),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Translated with $_source',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: AppColors.textSecondary.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          
-          const SizedBox(height: 24),
-          
-          // Familiarity Level Selector
-          const Text(
-            'Familiarity Level',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [1, 2, 3, 4, 5].map((level) {
-              final isSelected = _selectedLevel == level;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedLevel = level),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isSelected ? levelColors[level] : levelColors[level]!.withOpacity(0.3),
-                        shape: BoxShape.circle,
-                        border: isSelected 
-                          ? Border.all(color: Colors.white, width: 3) 
-                          : null,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$level',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: isSelected ? 18 : 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      levelLabels[level]!,
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isSelected ? levelColors[level] : AppColors.textSecondary,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-          
-          const SizedBox(height: 24),
-          const Divider(color: AppColors.surfaceHighlight),
-          const SizedBox(height: 16),
-          
-          // Save to List Section
-          const Text(
-            'Save to Word List',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          
-          if (_isSaving)
-            const Center(child: CircularProgressIndicator())
-          else ...[
-            // Word lists
-            if (_wordLists.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'No word lists yet. Create one below!',
-                  style: TextStyle(color: AppColors.textSecondary),
-                  textAlign: TextAlign.center,
-                ),
-              )
-            else
-              ...(_wordLists.map((list) {
-                return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                  leading: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: _parseColorSync(list['color']),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  title: Text(list['name'] ?? 'Unnamed'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
-                    onPressed: () => _saveWord(
-                      list['id'] as int,
-                      list['name'] as String,
-                      list['color'] as String?,
-                    ),
-                  ),
-                  onTap: () => _saveWord(
-                    list['id'] as int,
-                    list['name'] as String,
-                    list['color'] as String?,
-                  ),
-                );
-              })),
-            
-            const SizedBox(height: 16),
-            
-            // Create new list
-            if (_showCreateListForm)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surfaceHighlight.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _newListNameController,
-                      decoration: const InputDecoration(
-                        hintText: 'List name',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      autofocus: true,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => setState(() => _showCreateListForm = false),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: _createNewList,
-                          child: const Text('Create'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              )
-            else
-              OutlinedButton.icon(
-                onPressed: () => setState(() => _showCreateListForm = true),
-                icon: const Icon(Icons.add),
-                label: const Text('Create New List'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-          ],
-          
-          const SizedBox(height: 16),
-          const Divider(color: AppColors.surfaceHighlight),
-          const SizedBox(height: 8),
-          
-          // Context
-          const Text(
-            "Context:",
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            widget.sentence.isNotEmpty ? widget.sentence : "No context available",
-            style: const TextStyle(
-              fontSize: 14,
-              color: AppColors.textPrimary,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-          const SizedBox(height: 24),
-        ],
-      ),
-    );
-  }
-
   Color _parseColorSync(String? colorStr) {
     if (colorStr == null) return const Color(0xFF2196F3);
     try {
@@ -431,5 +228,965 @@ class _TranslationSheetState extends State<TranslationSheet> {
     } catch (_) {
       return const Color(0xFF2196F3);
     }
+  }
+
+  Future<void> _createNewList() async {
+    final name = _newListNameController.text.trim();
+    if (name.isEmpty) return;
+    await _databaseService.createWordList(name, '');
+    await SyncService.pushToCloud();
+    _newListNameController.clear();
+    await _loadWordLists();
+    if (mounted) {
+      setState(() => _showCreateListForm = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Created list "$name"')));
+    }
+  }
+
+  Future<void> _saveWord(int listId, String listName, String? colorStr) async {
+    if (_translation == null) return;
+    setState(() => _isSaving = true);
+    try {
+      await _databaseService.addWord(
+        listId: listId,
+        word: widget.word,
+        translation: _translation!,
+        context: widget.sentence,
+        note: _noteController.text.trim().isEmpty
+            ? null
+            : _noteController.text.trim(),
+      );
+      final db = await _databaseService.database;
+      await db.update(
+        'word_familiarity',
+        {'familiarity_level': _selectedLevel},
+        where: 'word_lower = ?',
+        whereArgs: [widget.word.toLowerCase()],
+      );
+      await SyncService.pushToCloud();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Word saved to $listName')));
+        final color = await _parseColor(colorStr);
+        Navigator.pop(context, WordColor(widget.word, color));
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  // ── Dictionary ─────────────────────────────────────────────────────────────
+
+  Future<void> _lookupDictionary() async {
+    setState(() {
+      _isLookingUp = true;
+      _turengError = null;
+    });
+    try {
+      final results = await _turengService.lookup(
+        widget.word,
+        languagePair: _turengLanguagePair,
+      );
+      if (mounted) {
+        setState(() {
+          _turengResults = results;
+          _isLookingUp = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _turengError = 'Could not load dictionary: $e';
+          _isLookingUp = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveGeminiAnswerAsNote(String answer) async {
+    final note = answer.trim();
+    if (note.isEmpty) return;
+    try {
+      final updatedRows = await _databaseService.updateNoteForWord(
+        widget.word,
+        note,
+      );
+      if (updatedRows > 0) {
+        await SyncService.pushToCloud();
+      }
+    } catch (_) {
+      // Do not interrupt Gemini UX for note persistence failures.
+    }
+  }
+
+  // ── Ask Gemini ─────────────────────────────────────────────────────────────
+
+  Future<void> _askGemini() async {
+    setState(() {
+      _isAskingGemini = true;
+      _geminiError = null;
+      _geminiTabLoaded = true;
+    });
+    try {
+      final result = await _geminiService.explainPhrase(
+        widget.word,
+        targetLanguage: _geminiTargetLanguage,
+      );
+      if (mounted) {
+        if (_noteController.text.trim().isEmpty) {
+          _noteController.text = result.trim();
+        }
+        setState(() {
+          _geminiResult = result;
+          _isAskingGemini = false;
+        });
+      }
+      await _saveGeminiAnswerAsNote(result);
+    } catch (e) {
+      if (mounted) {
+        // Normalize "premium_required: ..." to "premium_required" for UI state handling.
+        final msg = e.toString().replaceFirst('Exception: ', '').trim();
+        final normalized =
+            msg == 'premium_required' || msg.startsWith('premium_required:')
+                ? 'premium_required'
+                : (msg == 'not_logged_in' ? 'not_logged_in' : msg);
+        setState(() {
+          _geminiError = normalized;
+          _isAskingGemini = false;
+        });
+      }
+    }
+  }
+
+  Widget _buildScrollableCenter(Widget child, {EdgeInsets? padding}) {
+    return ListView(
+      controller: widget.scrollController,
+      padding: padding ?? const EdgeInsets.all(24),
+      children: [
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 560),
+            child: child,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Drag handle ──
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 4),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // ── Word title ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 4),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                widget.word,
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+
+          // ── Tabs ──
+          TabBar(
+            controller: _tabController,
+            labelColor: AppColors.primary,
+            unselectedLabelColor: AppColors.textSecondary,
+            indicatorColor: AppColors.primary,
+            tabs: const [
+              Tab(text: 'Translate'),
+              Tab(text: 'Dictionary'),
+              Tab(text: 'Ask Gemini'),
+            ],
+          ),
+
+          // ── Tab content ──
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildTranslateTab(),
+                _buildDictionaryTab(),
+                _buildGeminiTab(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Translate Tab ──────────────────────────────────────────────────────────
+
+  Widget _buildTranslateTab() {
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      children: [
+        if (_isTranslating)
+          const Center(child: CircularProgressIndicator())
+        else if (_translationError != null)
+          Text(_translationError!,
+              style: const TextStyle(color: AppColors.error))
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _translation ?? '',
+                style: const TextStyle(
+                    fontSize: 20,
+                    color: AppColors.secondary,
+                    fontWeight: FontWeight.w500),
+              ),
+              if (_source != null) ...[
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.translate,
+                        size: 12,
+                        color: AppColors.textSecondary.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Translated with $_source',
+                      style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.textSecondary.withOpacity(0.7)),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+
+        const SizedBox(height: 24),
+
+        // Familiarity Level Selector
+        const Text(
+          'Familiarity Level',
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [1, 2, 3, 4, 5].map((level) {
+            final isSelected = _selectedLevel == level;
+            return GestureDetector(
+              onTap: () => setState(() => _selectedLevel = level),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? levelColors[level]
+                          : levelColors[level]!.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                      border: isSelected
+                          ? Border.all(color: Colors.white, width: 3)
+                          : null,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '$level',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: isSelected ? 18 : 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    levelLabels[level]!,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isSelected
+                          ? levelColors[level]
+                          : AppColors.textSecondary,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 24),
+        const Divider(color: AppColors.surfaceHighlight),
+        const SizedBox(height: 16),
+
+        const Text(
+          'Note (optional)',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _noteController,
+          minLines: 3,
+          maxLines: 7,
+          decoration: InputDecoration(
+            hintText:
+                'Add your own note. Gemini answers will be saved here automatically.',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+        const Divider(color: AppColors.surfaceHighlight),
+        const SizedBox(height: 16),
+
+        // Save to List Section
+        const Text('Save to Word List',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary)),
+        const SizedBox(height: 12),
+
+        if (_isSaving)
+          const Center(child: CircularProgressIndicator())
+        else ...[
+          if (_wordLists.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHighlight.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text('No word lists yet. Create one below!',
+                  style: TextStyle(color: AppColors.textSecondary),
+                  textAlign: TextAlign.center),
+            )
+          else
+            ...(_wordLists.map((list) {
+              return ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                leading: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: _parseColorSync(list['color']),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                title: Text(list['name'] ?? 'Unnamed'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.add_circle_outline,
+                      color: AppColors.primary),
+                  onPressed: () => _saveWord(list['id'] as int,
+                      list['name'] as String, list['color'] as String?),
+                ),
+                onTap: () => _saveWord(list['id'] as int,
+                    list['name'] as String, list['color'] as String?),
+              );
+            })),
+          const SizedBox(height: 16),
+          if (_showCreateListForm)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHighlight.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _newListNameController,
+                    decoration: const InputDecoration(
+                        hintText: 'List name',
+                        border: OutlineInputBorder(),
+                        isDense: true),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                          onPressed: () =>
+                              setState(() => _showCreateListForm = false),
+                          child: const Text('Cancel')),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                          onPressed: _createNewList,
+                          child: const Text('Create')),
+                    ],
+                  ),
+                ],
+              ),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: () => setState(() => _showCreateListForm = true),
+              icon: const Icon(Icons.add),
+              label: const Text('Create New List'),
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+            ),
+        ],
+
+        const SizedBox(height: 16),
+        const Divider(color: AppColors.surfaceHighlight),
+        const SizedBox(height: 8),
+
+        const Text('Context:',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        const SizedBox(height: 4),
+        Text(
+          widget.sentence.isNotEmpty ? widget.sentence : 'No context available',
+          style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.textPrimary,
+              fontStyle: FontStyle.italic),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  // ── Dictionary Tab ─────────────────────────────────────────────────────────
+
+  Widget _buildDictionaryTab() {
+    // Not yet loaded — prompt to switch here
+    if (_turengResults == null && !_isLookingUp && _turengError == null) {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.menu_book_outlined,
+                size: 48, color: AppColors.textSecondary),
+            const SizedBox(height: 12),
+            const Text('Tap to look up in dictionary',
+                style: TextStyle(color: AppColors.textSecondary)),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _lookupDictionary,
+              icon: const Icon(Icons.search),
+              label: const Text('Look Up'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_isLookingUp) {
+      return _buildScrollableCenter(const CircularProgressIndicator());
+    }
+
+    if (_turengError != null) {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 40),
+            const SizedBox(height: 12),
+            Text(_turengError!,
+                style: const TextStyle(color: AppColors.error),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _turengResults = null;
+                  _turengError = null;
+                });
+                _lookupDictionary();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_turengResults!.isEmpty) {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off,
+                size: 48, color: AppColors.textSecondary),
+            const SizedBox(height: 12),
+            Text(
+              'No results found for "${widget.word}"',
+              style: const TextStyle(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Language pair: $_turengLanguagePair',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary.withOpacity(0.6)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Group entries by category
+    final grouped = <String, List<TurengEntry>>{};
+    for (final entry in _turengResults!) {
+      final cat = entry.category.isNotEmpty ? entry.category : 'General';
+      grouped.putIfAbsent(cat, () => []).add(entry);
+    }
+
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        // Language pair badge
+        Row(
+          children: [
+            const Icon(Icons.language,
+                size: 14, color: AppColors.textSecondary),
+            const SizedBox(width: 4),
+            Text(
+              _turengLanguagePair.replaceAll('-', ' ↔ '),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary.withOpacity(0.7)),
+            ),
+            const Spacer(),
+            Text(
+              '${_turengResults!.length} results',
+              style: TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary.withOpacity(0.7)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        ...grouped.entries.map((categoryGroup) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Category header
+              if (categoryGroup.key.isNotEmpty &&
+                  categoryGroup.key != 'General') ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    categoryGroup.key,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary),
+                  ),
+                ),
+                const SizedBox(height: 6),
+              ] else
+                const SizedBox(height: 8),
+
+              // Entries
+              ...categoryGroup.value
+                  .map((entry) => _buildDictionaryEntry(entry)),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  Widget _buildDictionaryEntry(TurengEntry entry) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Part of speech chip
+          if (entry.partOfSpeech.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              margin: const EdgeInsets.only(right: 10, top: 2),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                entry.partOfSpeech,
+                style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.secondary,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                children: [
+                  TextSpan(
+                    text: entry.term,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  const TextSpan(
+                    text: '  →  ',
+                    style:
+                        TextStyle(color: AppColors.textSecondary, fontSize: 13),
+                  ),
+                  TextSpan(
+                    text: entry.translation,
+                    style: const TextStyle(
+                        color: AppColors.secondary, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Gemini Tab ─────────────────────────────────────────────────────────────
+
+  Widget _buildGeminiTab() {
+    // Loading
+    if (_isAskingGemini) {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              'Asking Gemini about "${widget.word}"…',
+              style:
+                  const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Not logged in
+    if (_geminiError == 'not_logged_in') {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.account_circle_outlined,
+                size: 60, color: AppColors.primary),
+            const SizedBox(height: 16),
+            const Text(
+              'Sign In to Use Gemini',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'You need to be signed in to use AI-powered explanations.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.login),
+                label: const Text('Go to Sign In'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Not premium
+    if (_geminiError == 'premium_required') {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6C3DE4), Color(0xFF9B59B6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child:
+                  const Icon(Icons.auto_awesome, color: Colors.white, size: 36),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Premium Feature',
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'AI-powered explanations with Gemini are available for Premium subscribers.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6C3DE4).withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border:
+                    Border.all(color: const Color(0xFF6C3DE4).withOpacity(0.3)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _PremiumBullet(
+                      icon: Icons.auto_awesome,
+                      text: 'Detailed word & phrase explanations'),
+                  SizedBox(height: 8),
+                  _PremiumBullet(
+                      icon: Icons.translate,
+                      text: 'Example sentences in your language'),
+                  SizedBox(height: 8),
+                  _PremiumBullet(
+                      icon: Icons.lightbulb_outline,
+                      text: 'Usage tips & collocations'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.workspace_premium),
+                label: const Text('Upgrade to Premium'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  backgroundColor: const Color(0xFF6C3DE4),
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Generic error
+    if (_geminiError != null) {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 40),
+            const SizedBox(height: 12),
+            Text(
+              _geminiError!,
+              style: const TextStyle(color: AppColors.error),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _geminiError = null;
+                  _geminiTabLoaded = false;
+                });
+                _askGemini();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Not yet asked (connected but tab not switched yet)
+    if (_geminiResult == null) {
+      return _buildScrollableCenter(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.auto_awesome, size: 48, color: AppColors.primary),
+            const SizedBox(height: 12),
+            Text(
+              'Ask Gemini about "${widget.word}"',
+              style: const TextStyle(color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _askGemini,
+              icon: const Icon(Icons.send),
+              label: const Text('Get Explanation'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Result
+    return ListView(
+      controller: widget.scrollController,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        // Header row
+        Row(
+          children: [
+            const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
+            const SizedBox(width: 6),
+            const Text('Gemini',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                    fontSize: 13)),
+            const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.refresh,
+                  size: 18, color: AppColors.textSecondary),
+              tooltip: 'Ask again',
+              onPressed: () {
+                setState(() {
+                  _geminiResult = null;
+                  _geminiTabLoaded = false;
+                });
+                _askGemini();
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Render full markdown response
+        _buildGeminiContent(_geminiResult!),
+      ],
+    );
+  }
+
+  Widget _buildGeminiContent(String text) {
+    return MarkdownBody(
+      selectable: true,
+      data: text,
+      styleSheet: MarkdownStyleSheet(
+        p: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          height: 1.5,
+        ),
+        h1: const TextStyle(
+          color: AppColors.primary,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+        h2: const TextStyle(
+          color: AppColors.primary,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
+        h3: const TextStyle(
+          color: AppColors.primary,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+        ),
+        strong: const TextStyle(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.bold,
+        ),
+        listBullet: const TextStyle(
+          color: AppColors.secondary,
+          fontSize: 14,
+        ),
+        blockSpacing: 10,
+      ),
+    );
+  }
+}
+
+/// Small icon + text row used in the Gemini premium upgrade banner.
+class _PremiumBullet extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _PremiumBullet({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: const Color(0xFF6C3DE4)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+          ),
+        ),
+      ],
+    );
   }
 }

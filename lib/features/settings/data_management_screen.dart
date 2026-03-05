@@ -6,7 +6,6 @@ import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../services/database_service.dart';
 import '../../../core/constants/app_colors.dart';
-import '../sync/qr_scan_screen.dart';
 
 class DataManagementScreen extends StatefulWidget {
   const DataManagementScreen({super.key});
@@ -100,37 +99,6 @@ class _DataManagementScreenState extends State<DataManagementScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // --- Sync Section ---
-          const Text(
-            'Synchronization',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Sync with your Desktop app instantly by scanning a QR code.',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 16),
-          ListTile(
-            leading: const Icon(Icons.qr_code_scanner, color: AppColors.primary),
-            title: const Text('Sync with Desktop'),
-            subtitle: const Text('Scan QR code'),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const QrScanScreen()),
-              );
-            },
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            tileColor: AppColors.secondary.withOpacity(0.1),
-          ),
-          const SizedBox(height: 32),
-
           // --- Backup Section ---
           const Text(
             'Backup & Restore',

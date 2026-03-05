@@ -22,7 +22,7 @@ class DatabaseService {
     String path = join(documentsDirectory.path, 'linguareader.db');
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -53,6 +53,7 @@ class DatabaseService {
         target_language TEXT NOT NULL,
         sentence_context TEXT,
         pdf_name TEXT,
+        note TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         mastery_level INTEGER DEFAULT 0
       )
@@ -113,12 +114,12 @@ class DatabaseService {
       )
     ''');
 
-
-
     // Default Settings
     // Default Settings
-    await db.insert('user_settings', {'key': 'target_language', 'value': 'tr'}, conflictAlgorithm: ConflictAlgorithm.ignore);
-    await db.insert('user_settings', {'key': 'theme', 'value': 'dark'}, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert('user_settings', {'key': 'target_language', 'value': 'tr'},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert('user_settings', {'key': 'theme', 'value': 'dark'},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   // --- Settings ---
@@ -155,6 +156,14 @@ class DatabaseService {
         print("Migration error (might be okay if column exists): $e");
       }
     }
+    if (oldVersion < 3) {
+      try {
+        await db.execute('ALTER TABLE words ADD COLUMN note TEXT');
+      } catch (e) {
+        // Ignore if column already exists
+        print("Migration error (might be okay if column exists): $e");
+      }
+    }
   }
 
   // --- Word Lists ---
@@ -163,7 +172,8 @@ class DatabaseService {
     return await db.query('word_lists', orderBy: 'created_at DESC');
   }
 
-  Future<int> createWordList(String name, String description, {String? color}) async {
+  Future<int> createWordList(String name, String description,
+      {String? color}) async {
     final db = await database;
     return await db.insert('word_lists', {
       'name': name,
@@ -174,7 +184,7 @@ class DatabaseService {
 
   Future<void> deleteWordList(int id) async {
     final db = await database;
-    
+
     // 1. Get all words in this list
     final words = await db.rawQuery('''
       SELECT w.id, w.word 
@@ -186,9 +196,10 @@ class DatabaseService {
     // 2. Delete words specific to this list (orphans)
     // Desktop logic: Deletes words that are ONLY in this list (orphaned after list deletion)
     // To do this safely, we first delete the list items, then check for orphans.
-    
-    await db.delete('word_list_items', where: 'word_list_id = ?', whereArgs: [id]);
-    
+
+    await db
+        .delete('word_list_items', where: 'word_list_id = ?', whereArgs: [id]);
+
     // 3. Find and delete orphaned words
     await db.rawDelete('''
       DELETE FROM words 
@@ -198,13 +209,13 @@ class DatabaseService {
         WHERE wli.word_id IS NULL
       )
     ''');
-    
+
     // 4. Cleanup familiarity table for deleted words
     // Note: Since we don't have a direct FK from familiarity to words in the current schema (it uses word_lower),
     // we should ideally clean this up. Desktop regex removes special chars, we will do a simpler check.
-    // Ideally, familiarity should be cleaned up if the word doesn't exist in 'words' table anymore? 
+    // Ideally, familiarity should be cleaned up if the word doesn't exist in 'words' table anymore?
     // Or we can leave it for history. Desktop deletes it.
-    
+
     await db.rawDelete('''
       DELETE FROM word_familiarity 
       WHERE word_lower NOT IN (
@@ -216,21 +227,22 @@ class DatabaseService {
     await db.delete('word_lists', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<List<Map<String, dynamic>>> getWordsWithColors({List<int>? listIds}) async {
+  Future<List<Map<String, dynamic>>> getWordsWithColors(
+      {List<int>? listIds}) async {
     final db = await database;
-    
+
     // If listIds is explicitly empty list (not null), return nothing
     if (listIds != null && listIds.isEmpty) {
       return [];
     }
-    
+
     String query = '''
       SELECT w.word, wl.color 
       FROM words w
       INNER JOIN word_list_items wli ON w.id = wli.word_id
       INNER JOIN word_lists wl ON wl.id = wli.word_list_id
     ''';
-    
+
     if (listIds != null && listIds.isNotEmpty) {
       final ids = listIds.join(',');
       query += ' WHERE wl.id IN ($ids)';
@@ -238,7 +250,7 @@ class DatabaseService {
 
     // Order by most recently added list to prioritize colors
     query += ' ORDER BY wl.created_at DESC';
-    
+
     return await db.rawQuery(query);
   }
 
@@ -260,6 +272,7 @@ class DatabaseService {
     required String translation,
     required String context,
     String? pdfName,
+    String? note,
   }) async {
     final db = await database;
     // 0. Get target language
@@ -269,10 +282,11 @@ class DatabaseService {
     final wordId = await db.insert('words', {
       'word': word,
       'translation': translation,
-      'source_language': 'auto', 
-      'target_language': targetLang, 
+      'source_language': 'auto',
+      'target_language': targetLang,
       'sentence_context': context,
       'pdf_name': pdfName,
+      'note': note,
     });
 
     // 2. Link to list
@@ -280,25 +294,55 @@ class DatabaseService {
       'word_list_id': listId,
       'word_id': wordId,
     });
-    
+
     // 3. Initialize SRS (Familiarity)
-    await db.insert('word_familiarity', {
-      'word_lower': word.toLowerCase(),
-      'translation': translation,
-      'next_review_date': DateTime.now().toIso8601String(), // Start review immediately or next day
-    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.insert(
+        'word_familiarity',
+        {
+          'word_lower': word.toLowerCase(),
+          'translation': translation,
+          'next_review_date': DateTime.now()
+              .toIso8601String(), // Start review immediately or next day
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore);
 
     return wordId;
   }
 
+  Future<String?> getLatestNoteForWord(String word) async {
+    final db = await database;
+    final rows = await db.query(
+      'words',
+      columns: ['note'],
+      where: 'LOWER(word) = ? AND note IS NOT NULL AND TRIM(note) != ""',
+      whereArgs: [word.toLowerCase()],
+      orderBy: 'created_at DESC, id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['note'] as String?;
+  }
+
+  Future<int> updateNoteForWord(String word, String note) async {
+    final db = await database;
+    return db.update(
+      'words',
+      {'note': note},
+      where: 'LOWER(word) = ?',
+      whereArgs: [word.toLowerCase()],
+    );
+  }
+
   Future<void> deleteWord(int id) async {
     final db = await database;
-    
+
     // Get word text for familiarity cleanup
-    final wordMaps = await db.query('words', columns: ['word'], where: 'id = ?', whereArgs: [id]);
+    final wordMaps = await db.query('words',
+        columns: ['word'], where: 'id = ?', whereArgs: [id]);
     if (wordMaps.isNotEmpty) {
       final wordLower = (wordMaps.first['word'] as String).toLowerCase();
-      await db.delete('word_familiarity', where: 'word_lower = ?', whereArgs: [wordLower]);
+      await db.delete('word_familiarity',
+          where: 'word_lower = ?', whereArgs: [wordLower]);
     }
 
     await db.delete('words', where: 'id = ?', whereArgs: [id]);
@@ -306,20 +350,18 @@ class DatabaseService {
 
   Future<void> removeWordFromList(int listId, int wordId) async {
     final db = await database;
-    
+
     // Remove link
     await db.delete('word_list_items',
         where: 'word_list_id = ? AND word_id = ?', whereArgs: [listId, wordId]);
 
     // Check if word is now an orphan (not in any list)
     final count = Sqflite.firstIntValue(await db.rawQuery(
-      'SELECT COUNT(*) FROM word_list_items WHERE word_id = ?',
-      [wordId]
-    ));
+        'SELECT COUNT(*) FROM word_list_items WHERE word_id = ?', [wordId]));
 
     if (count == 0) {
       // It's an orphan, delete it fully
-      await deleteWord(wordId); 
+      await deleteWord(wordId);
     }
   }
 
@@ -331,11 +373,14 @@ class DatabaseService {
 
   Future<void> addRecentPdf(String name, String path) async {
     final db = await database;
-    await db.insert('recent_pdfs', {
-      'name': name,
-      'path': path,
-      'last_opened': DateTime.now().toIso8601String(),
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+        'recent_pdfs',
+        {
+          'name': name,
+          'path': path,
+          'last_opened': DateTime.now().toIso8601String(),
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // --- Stats ---
@@ -343,9 +388,8 @@ class DatabaseService {
     final db = await database;
     final now = DateTime.now().toIso8601String();
     final result = await db.rawQuery(
-      'SELECT COUNT(*) as count FROM word_familiarity WHERE next_review_date <= ?',
-      [now]
-    );
+        'SELECT COUNT(*) as count FROM word_familiarity WHERE next_review_date <= ?',
+        [now]);
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
@@ -357,21 +401,26 @@ class DatabaseService {
       FROM word_familiarity 
       GROUP BY familiarity_level
     ''');
-    
+
     final stats = <String, int>{
       'Unknown': 0,
       'Seen': 0,
       'Learning': 0,
-      'Mastered': 0, // Combining Familiar and Mastered for simplicity or keeping separate
+      'Mastered':
+          0, // Combining Familiar and Mastered for simplicity or keeping separate
     };
 
     for (var row in result) {
       final level = row['familiarity_level'] as int;
       final count = row['count'] as int;
-      if (level <= 1) stats['Unknown'] = (stats['Unknown'] ?? 0) + count;
-      else if (level == 2) stats['Seen'] = (stats['Seen'] ?? 0) + count;
-      else if (level == 3) stats['Learning'] = (stats['Learning'] ?? 0) + count;
-      else stats['Mastered'] = (stats['Mastered'] ?? 0) + count;
+      if (level <= 1)
+        stats['Unknown'] = (stats['Unknown'] ?? 0) + count;
+      else if (level == 2)
+        stats['Seen'] = (stats['Seen'] ?? 0) + count;
+      else if (level == 3)
+        stats['Learning'] = (stats['Learning'] ?? 0) + count;
+      else
+        stats['Mastered'] = (stats['Mastered'] ?? 0) + count;
     }
     return stats;
   }
@@ -380,7 +429,7 @@ class DatabaseService {
     final db = await database;
     final now = DateTime.now();
     final todayStr = now.toIso8601String().split('T')[0];
-    
+
     // Get all future reviews
     final List<Map<String, dynamic>> result = await db.rawQuery('''
       SELECT next_review_date 
@@ -393,7 +442,7 @@ class DatabaseService {
       'Overdue': 0,
       'Today': 0,
       'Soon (1-3d)': 0,
-      'Later (4-7d)': 0, 
+      'Later (4-7d)': 0,
       'Mastered (7+d)': 0,
     };
 
@@ -403,7 +452,7 @@ class DatabaseService {
       final dateStr = row['next_review_date'] as String;
       final date = DateTime.parse(dateStr);
       final reviewDate = DateTime(date.year, date.month, date.day);
-      
+
       final diff = reviewDate.difference(todayDate).inDays;
 
       if (diff < 0) {
@@ -419,9 +468,11 @@ class DatabaseService {
         buckets['Mastered (7+d)'] = (buckets['Mastered (7+d)'] ?? 0) + 1;
       }
     }
-    
+
     // Format for chart: List of maps
-    return buckets.entries.map((e) => {'review_day': e.key, 'count': e.value}).toList();
+    return buckets.entries
+        .map((e) => {'review_day': e.key, 'count': e.value})
+        .toList();
   }
 
   Future<List<Map<String, dynamic>>> getDueWords() async {
@@ -440,7 +491,7 @@ class DatabaseService {
   Future<void> updateWordFamiliarity(int id, int quality) async {
     // Quality: 0=Forgot, 3=Hard, 4=Good, 5=Easy
     final db = await database;
-    
+
     // Get current state
     final List<Map<String, dynamic>> maps = await db.query(
       'word_familiarity',
@@ -449,7 +500,7 @@ class DatabaseService {
     );
 
     if (maps.isEmpty) return;
-    
+
     final current = maps.first;
     double easeFactor = current['easiness_factor'] as double;
     int interval = current['interval'] as int;
@@ -470,7 +521,8 @@ class DatabaseService {
       interval = 1;
     }
 
-    easeFactor = easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    easeFactor =
+        easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
     if (easeFactor < 1.3) easeFactor = 1.3;
 
     final nextReview = DateTime.now().add(Duration(days: interval));
@@ -488,12 +540,12 @@ class DatabaseService {
       where: 'id = ?',
       whereArgs: [id],
     );
-    
+
     // Also update words table mastery if linked
     // We match by word string since there isn't a direct ID link in the schema shown earlier (word_lower vs word text)
     // Ideally we should fix the schema to have a foreign key, but for now we look up by word
     final wordLower = current['word_lower'] as String;
-    
+
     // Update mastery_level in words table (0-5 scale)
     await db.rawUpdate('''
       UPDATE words 
@@ -501,6 +553,7 @@ class DatabaseService {
       WHERE LOWER(word) = ?
     ''', [repetitions > 5 ? 5 : repetitions, wordLower]);
   }
+
   // --- Data Management (Export/Import) ---
   Future<Map<String, dynamic>> getAllData() async {
     final db = await database;
@@ -518,7 +571,7 @@ class DatabaseService {
 
   Future<void> importData(Map<String, dynamic> data) async {
     final db = await database;
-    
+
     // Use transaction to ensure data integrity
     await db.transaction((txn) async {
       // --- 1. Import Word Lists (Map IDs by Name) ---
@@ -528,7 +581,7 @@ class DatabaseService {
         for (var item in data['wordLists']) {
           final remoteId = item['id'] as int;
           final name = item['name'] as String;
-          
+
           // Check if list exists by name
           final List<Map<String, dynamic>> existing = await txn.query(
             'word_lists',
@@ -540,18 +593,18 @@ class DatabaseService {
           if (existing.isNotEmpty) {
             final localId = existing.first['id'] as int;
             listIdMap[remoteId] = localId;
-            
+
             // Update color/desc if present
             if (item['color'] != null || item['description'] != null) {
               await txn.update(
-                'word_lists', 
-                {
-                  if (item['color'] != null) 'color': item['color'],
-                  if (item['description'] != null) 'description': item['description'],
-                },
-                where: 'id = ?',
-                whereArgs: [localId]
-              );
+                  'word_lists',
+                  {
+                    if (item['color'] != null) 'color': item['color'],
+                    if (item['description'] != null)
+                      'description': item['description'],
+                  },
+                  where: 'id = ?',
+                  whereArgs: [localId]);
             }
           } else {
             // Insert new list (ignoring ID to let AutoIncrement work)
@@ -571,7 +624,7 @@ class DatabaseService {
           final remoteId = item['id'] as int;
           final word = (item['word'] as String).trim();
           final translation = (item['translation'] as String).trim();
-          
+
           // Check if word exists (Case-insensitive check)
           final List<Map<String, dynamic>> existing = await txn.rawQuery(
             'SELECT id FROM words WHERE LOWER(TRIM(word)) = ? AND LOWER(TRIM(translation)) = ?',
@@ -579,7 +632,16 @@ class DatabaseService {
           );
 
           if (existing.isNotEmpty) {
-            wordIdMap[remoteId] = existing.first['id'] as int;
+            final existingId = existing.first['id'] as int;
+            wordIdMap[remoteId] = existingId;
+            if (item['note'] != null) {
+              await txn.update(
+                'words',
+                {'note': item['note']},
+                where: 'id = ?',
+                whereArgs: [existingId],
+              );
+            }
           } else {
             // Insert new word
             final newItem = Map<String, dynamic>.from(item);
@@ -603,7 +665,7 @@ class DatabaseService {
 
           if (localListId != null && localWordId != null) {
             // Check if link already exists
-             final List<Map<String, dynamic>> existing = await txn.query(
+            final List<Map<String, dynamic>> existing = await txn.query(
               'word_list_items',
               where: 'word_list_id = ? AND word_id = ?',
               whereArgs: [localListId, localWordId],
@@ -613,26 +675,27 @@ class DatabaseService {
               await txn.insert('word_list_items', {
                 'word_list_id': localListId,
                 'word_id': localWordId,
-                'added_at': item['added_at'] ?? DateTime.now().toIso8601String(),
+                'added_at':
+                    item['added_at'] ?? DateTime.now().toIso8601String(),
               });
             }
           }
         }
       }
-      
+
       // --- 4. Import Quiz Results (Map List IDs) ---
       if (data['quizResults'] != null) {
         for (var item in data['quizResults']) {
-           final remoteListId = item['word_list_id'] as int;
-           final localListId = listIdMap[remoteListId];
-           
-           if (localListId != null) {
-             final newItem = Map<String, dynamic>.from(item);
-             newItem.remove('id');
-             newItem['word_list_id'] = localListId;
-             // Don't check for duplicates for quizzes, just add history
-             await txn.insert('quiz_results', newItem);
-           }
+          final remoteListId = item['word_list_id'] as int;
+          final localListId = listIdMap[remoteListId];
+
+          if (localListId != null) {
+            final newItem = Map<String, dynamic>.from(item);
+            newItem.remove('id');
+            newItem['word_list_id'] = localListId;
+            // Don't check for duplicates for quizzes, just add history
+            await txn.insert('quiz_results', newItem);
+          }
         }
       }
 
@@ -641,19 +704,17 @@ class DatabaseService {
         for (var item in data['userSettings']) {
           // Skip target_language to preserve local preference
           if (item['key'] == 'target_language') continue;
-          
-          await txn.insert('user_settings', item, conflictAlgorithm: ConflictAlgorithm.replace);
+
+          await txn.insert('user_settings', item,
+              conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
-      
+
       // --- 6. Import SRS Data (Match by Word Lower) ---
       if (data['wordFamiliarity'] != null) {
-         for (var item in data['wordFamiliarity']) {
-           // We match by word_lower, which is a unique key
-           // If it exists, we could check which one is "newer" (based on updated_at), 
-           // but for simple sync, we often accept latest import or trust the most recent device.
-           // Ideally we check timestamps.
-           await txn.insert('word_familiarity', item, conflictAlgorithm: ConflictAlgorithm.replace);
+        for (var item in data['wordFamiliarity']) {
+          await txn.insert('word_familiarity', item,
+              conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
     });
