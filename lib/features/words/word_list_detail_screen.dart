@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../core/constants/app_colors.dart';
 import '../../services/database_service.dart';
 import '../../services/sync_service.dart';
@@ -180,6 +181,290 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
     return levelColors[level ?? 1] ?? levelColors[1]!;
   }
 
+  String _notePreview(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    var text = raw;
+    text = text.replaceAllMapped(
+      RegExp(r'^\s{0,3}(#{1,6}\s*|[-*+]\s+|\d+\.\s+)', multiLine: true),
+      (_) => '',
+    );
+    text = text.replaceAll(RegExp(r'(\*\*|__|`|~~)'), '');
+    text = text.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
+      (m) => m.group(1) ?? '',
+    );
+    text = text.replaceAll(RegExp(r'\n+'), ' ').replaceAll(RegExp(r'\s+'), ' ');
+    return text.trim();
+  }
+
+  Future<void> _saveWordNote(int wordId, String note) async {
+    final db = await _databaseService.database;
+    final trimmed = note.trim();
+    await db.update(
+      'words',
+      {'note': trimmed.isEmpty ? null : trimmed},
+      where: 'id = ?',
+      whereArgs: [wordId],
+    );
+    await SyncService.pushToCloud();
+
+    if (!mounted) return;
+    setState(() {
+      for (final item in _words) {
+        if (item['id'] == wordId) {
+          item['note'] = trimmed.isEmpty ? null : trimmed;
+        }
+      }
+      for (final item in _filteredWords) {
+        if (item['id'] == wordId) {
+          item['note'] = trimmed.isEmpty ? null : trimmed;
+        }
+      }
+    });
+  }
+
+  Future<void> _removeWordFromCurrentList(Map<String, dynamic> word) async {
+    final wordId = word['id'] as int;
+    await _databaseService.removeWordFromList(widget.listId, wordId);
+    await SyncService.pushToCloud();
+    await _loadWords();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Word removed from list')),
+    );
+  }
+
+  Future<void> _showWordDetails(Map<String, dynamic> word) async {
+    final noteController =
+        TextEditingController(text: (word['note'] as String?) ?? '');
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.62,
+          minChildSize: 0.4,
+          maxChildSize: 1.0,
+          expand: false,
+          builder: (context, scrollController) {
+            return StatefulBuilder(
+              builder: (context, setModalState) {
+                final noteText = noteController.text.trim();
+                final hasContext =
+                    (word['sentence_context'] as String?)?.trim().isNotEmpty ==
+                        true;
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: ListView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: AppColors.textSecondary.withOpacity(0.35),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        word['word'] as String? ?? '',
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        word['translation'] as String? ?? '',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          color: AppColors.secondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _WordMetaChip(
+                            icon: Icons.flag_circle_outlined,
+                            text: 'Level ${word['mastery_level'] ?? 0}',
+                            color: _getFamiliarityColor(
+                              (word['mastery_level'] as int?) ?? 1,
+                            ),
+                          ),
+                          if ((word['source_language'] as String?) != null &&
+                              (word['target_language'] as String?) != null)
+                            _WordMetaChip(
+                              icon: Icons.translate,
+                              text:
+                                  '${word['source_language']} → ${word['target_language']}',
+                              color: AppColors.primary,
+                            ),
+                          if ((word['created_at'] as String?) != null)
+                            _WordMetaChip(
+                              icon: Icons.schedule,
+                              text: (word['created_at'] as String)
+                                  .split('T')
+                                  .first,
+                              color: AppColors.textSecondary,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      const Text(
+                        'Note',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      if (noteText.isNotEmpty) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceHighlight.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: MarkdownBody(
+                            data: noteText,
+                            selectable: true,
+                            styleSheet: MarkdownStyleSheet(
+                              p: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                height: 1.4,
+                              ),
+                              h1: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              h2: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              h3: const TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              listBullet: const TextStyle(
+                                color: AppColors.secondary,
+                                fontSize: 13,
+                              ),
+                              blockSpacing: 8,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                      TextField(
+                        controller: noteController,
+                        minLines: 5,
+                        maxLines: 12,
+                        onChanged: (_) => setModalState(() {}),
+                        decoration: InputDecoration(
+                          hintText:
+                              'No note yet. Write details for this word...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                      if (hasContext) ...[
+                        const SizedBox(height: 18),
+                        const Text(
+                          'Context',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          (word['sentence_context'] as String?) ?? '',
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            if (Navigator.of(modalContext).canPop()) {
+                              Navigator.of(modalContext).pop();
+                            }
+                            await _saveWordNote(word['id'] as int, noteText);
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              const SnackBar(content: Text('Note saved')),
+                            );
+                          },
+                          icon: const Icon(Icons.save_outlined),
+                          label: const Text('Save Note'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            if (Navigator.of(modalContext).canPop()) {
+                              Navigator.of(modalContext).pop();
+                            }
+                            await _showMoveDialog(word);
+                          },
+                          icon: const Icon(Icons.drive_file_move_outline),
+                          label: const Text('Move to Another List'),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            if (Navigator.of(modalContext).canPop()) {
+                              Navigator.of(modalContext).pop();
+                            }
+                            await _removeWordFromCurrentList(word);
+                          },
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Remove from This List'),
+                          style:
+                              TextButton.styleFrom(foregroundColor: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+
+    noteController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -329,7 +614,7 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                               await SyncService.pushToCloud();
 
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                ScaffoldMessenger.of(this.context).showSnackBar(
                                   const SnackBar(
                                       content: Text('Word removed from list')),
                                 );
@@ -340,6 +625,7 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                               child: ListTile(
                                 contentPadding: const EdgeInsets.symmetric(
                                     horizontal: 16, vertical: 8),
+                                onTap: () => _showWordDetails(word),
                                 leading: Container(
                                   width: 12,
                                   height: 12,
@@ -373,12 +659,13 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                                       Padding(
                                         padding: const EdgeInsets.only(top: 4),
                                         child: Text(
-                                          word['note'],
+                                          _notePreview(word['note'] as String?),
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                             fontSize: 11,
                                             color: AppColors.textSecondary,
+                                            height: 1.25,
                                           ),
                                         ),
                                       ),
@@ -423,6 +710,45 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                           );
                         },
                       ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WordMetaChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+
+  const _WordMetaChip({
+    required this.icon,
+    required this.text,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

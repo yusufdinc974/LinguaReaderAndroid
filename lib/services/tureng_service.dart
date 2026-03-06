@@ -38,6 +38,8 @@ class TurengService {
       if (result != null) return result;
     } on _TurengBlockedException {
       return _lookupFallback(word: trimmed, languagePair: languagePair);
+    } catch (_) {
+      return _lookupFallback(word: trimmed, languagePair: languagePair);
     }
 
     // Fallback: try lowercase
@@ -47,6 +49,8 @@ class TurengService {
         final lowerResult = await _fetchAndParse(lower, languagePair);
         if (lowerResult != null) return lowerResult;
       } on _TurengBlockedException {
+        return _lookupFallback(word: lower, languagePair: languagePair);
+      } catch (_) {
         return _lookupFallback(word: lower, languagePair: languagePair);
       }
     }
@@ -83,7 +87,9 @@ class TurengService {
     // 404 means word not found — return empty list (not an error)
     if (response.statusCode == 404) return [];
 
-    if (response.statusCode == 403) {
+    if (response.statusCode == 403 ||
+        response.statusCode == 429 ||
+        response.statusCode >= 500) {
       throw _TurengBlockedException();
     }
 
@@ -91,13 +97,48 @@ class TurengService {
       throw Exception('Tureng returned status ${response.statusCode}');
     }
 
+    final bodyLower = response.body.toLowerCase();
+    if (bodyLower.contains('attention required') ||
+        bodyLower.contains('cloudflare') ||
+        bodyLower.contains('captcha')) {
+      throw _TurengBlockedException();
+    }
+
     final results = _parseResults(response.body);
     // Return null only if we got a response that had no parseable results
     // (could indicate a redirect or captcha page rather than real results)
+    if (results.isEmpty && bodyLower.contains('security')) {
+      throw _TurengBlockedException();
+    }
     return results;
   }
 
   Future<List<TurengEntry>> _lookupFallback({
+    required String word,
+    required String languagePair,
+  }) async {
+    try {
+      return await _lookupGoogleFallback(
+        word: word,
+        languagePair: languagePair,
+      );
+    } catch (_) {
+      // Continue with secondary fallback.
+    }
+
+    try {
+      return await _lookupMyMemoryFallback(
+        word: word,
+        languagePair: languagePair,
+      );
+    } catch (_) {
+      throw Exception(
+        'Dictionary is temporarily unavailable (Tureng is blocking automated lookups).',
+      );
+    }
+  }
+
+  Future<List<TurengEntry>> _lookupGoogleFallback({
     required String word,
     required String languagePair,
   }) async {
@@ -110,42 +151,71 @@ class TurengService {
       'q': word,
     });
 
-    try {
-      final response = await http.get(uri).timeout(const Duration(seconds: 15));
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Fallback dictionary returned status ${response.statusCode}');
-      }
-
-      final data = json.decode(response.body) as List<dynamic>;
-      final segments =
-          data.isNotEmpty ? data.first as List<dynamic> : <dynamic>[];
-      final translation = segments
-          .map((segment) {
-            if (segment is List && segment.isNotEmpty) {
-              return segment.first?.toString() ?? '';
-            }
-            return '';
-          })
-          .join('')
-          .trim();
-
-      if (translation.isEmpty)
-        throw Exception('No fallback dictionary results');
-
-      return [
-        TurengEntry(
-          category: 'Fallback',
-          partOfSpeech: '',
-          term: word,
-          translation: translation,
-        ),
-      ];
-    } catch (_) {
+    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
       throw Exception(
-        'Dictionary is temporarily unavailable (Tureng is blocking automated lookups).',
-      );
+          'Fallback dictionary returned status ${response.statusCode}');
     }
+
+    final data = json.decode(response.body) as List<dynamic>;
+    final segments =
+        data.isNotEmpty ? data.first as List<dynamic> : <dynamic>[];
+    final translation = segments
+        .map((segment) {
+          if (segment is List && segment.isNotEmpty) {
+            return segment.first?.toString() ?? '';
+          }
+          return '';
+        })
+        .join('')
+        .trim();
+
+    if (translation.isEmpty) throw Exception('No fallback dictionary results');
+
+    return [
+      TurengEntry(
+        category: 'Fallback (Google)',
+        partOfSpeech: '',
+        term: word,
+        translation: translation,
+      ),
+    ];
+  }
+
+  Future<List<TurengEntry>> _lookupMyMemoryFallback({
+    required String word,
+    required String languagePair,
+  }) async {
+    final (source, target) = _sourceAndTarget(languagePair);
+    final uri = Uri.https('api.mymemory.translated.net', '/get', {
+      'q': word,
+      'langpair': '$source|$target',
+    });
+
+    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw Exception(
+          'MyMemory fallback returned status ${response.statusCode}');
+    }
+
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    final translated = ((data['responseData']
+                as Map<String, dynamic>?)?['translatedText'] as String? ??
+            '')
+        .trim();
+
+    if (translated.isEmpty) {
+      throw Exception('No MyMemory fallback results');
+    }
+
+    return [
+      TurengEntry(
+        category: 'Fallback (MyMemory)',
+        partOfSpeech: '',
+        term: word,
+        translation: translated,
+      ),
+    ];
   }
 
   (String, String) _sourceAndTarget(String languagePair) {

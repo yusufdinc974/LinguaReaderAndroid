@@ -1,7 +1,6 @@
 import 'dart:io';
-import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../core/constants/app_colors.dart';
@@ -30,9 +29,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
   double? _preservedZoomLevel;
   List<int> _selectedListIds = []; // Empty means ALL lists
   List<Map<String, dynamic>> _availableLists = [];
-  Timer? _selectionDebounce;
-  List<Annotation> _tempAnnotations = [];
-  String? _tempSelectedText; // Persist text after clearSelection
+  String? _tempSelectedText;
+  bool _showSelectionActions = false;
 
   @override
   void initState() {
@@ -157,50 +155,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  Future<void> _addTemporaryHighlight(String text) async {
-    if (_pdfBytes == null) return;
-    try {
-      // Clear previous temp highlights
-      _clearTemporaryHighlights();
-
-      final matches = await PdfHighlightService.findText(_pdfBytes!, text);
-      if (matches.isEmpty) return;
-
-      // Filter matches?
-      // Ideally we should filter by current page or intersection, but for now show all
-      // or limits to visible page if possible. (PdfHighlightService finds all).
-
-      // Group by page
-      final Map<int, List<MatchedItem>> matchesByPage = {};
-      for (final match in matches) {
-        matchesByPage.putIfAbsent(match.pageIndex, () => []).add(match);
-      }
-
-      for (final entry in matchesByPage.entries) {
-        final pageIndex = entry.key;
-        final pageMatches = entry.value;
-
-        final textLines = pageMatches
-            .map((m) => PdfTextLine(m.bounds, text, pageIndex + 1))
-            .toList();
-
-        final annotation = HighlightAnnotation(textBoundsCollection: textLines);
-        annotation.color = Colors.blue.withOpacity(0.3); // Selection color
-
-        _pdfViewerController.addAnnotation(annotation);
-        _tempAnnotations.add(annotation);
-      }
-    } catch (e) {
-      debugPrint('Error adding temp highlight: $e');
-    }
+  void _clearSelectionState() {
+    _pdfViewerController.clearSelection();
+    setState(() {
+      _selectionDetails = null;
+      _tempSelectedText = null;
+      _showSelectionActions = false;
+    });
   }
 
-  void _clearTemporaryHighlights() {
-    for (final annotation in _tempAnnotations) {
-      _pdfViewerController.removeAnnotation(annotation);
-    }
-    _tempAnnotations.clear();
-    _tempSelectedText = null;
+  Future<void> _copySelectedText() async {
+    final text = _tempSelectedText?.trim();
+    if (text == null || text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied to clipboard')),
+    );
+    _clearSelectionState();
   }
 
   @override
@@ -246,6 +218,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
             initialZoomLevel: _preservedZoomLevel ?? 1.0,
             enableTextSelection: true,
+            canShowTextSelectionMenu: false,
             onDocumentLoaded: (PdfDocumentLoadedDetails details) {
               // Document is now ready for annotations
               _pdfLoaded = true;
@@ -253,31 +226,24 @@ class _ReaderScreenState extends State<ReaderScreen> {
               _applyHighlightOverlays();
             },
             onTextSelectionChanged: (PdfTextSelectionChangedDetails details) {
-              _selectionDebounce?.cancel();
-
               if (details.selectedText == null ||
                   details.selectedText!.trim().isEmpty) {
-                // Cleared
-                if (_tempSelectedText == null) {
-                  setState(() => _selectionDetails = null);
-                }
+                setState(() {
+                  _selectionDetails = null;
+                  _tempSelectedText = null;
+                  _showSelectionActions = false;
+                });
                 return;
               }
 
-              // User is selecting... wait for pause
-              _selectionDebounce = Timer(const Duration(milliseconds: 600), () {
-                final text = details.selectedText!;
-                _tempSelectedText = text;
-
-                // Clear system selection to hide black menu
-                _pdfViewerController.clearSelection();
-
-                // Show our custom UI and fake highlight
+              final text = details.selectedText!.trim();
+              if (text.isNotEmpty) {
                 setState(() {
                   _selectionDetails = details;
+                  _tempSelectedText = text;
+                  _showSelectionActions = false;
                 });
-                _addTemporaryHighlight(text);
-              });
+              }
             },
           ),
           if (_selectionDetails != null)
@@ -291,26 +257,75 @@ class _ReaderScreenState extends State<ReaderScreen> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      vertical: 8.0, horizontal: 16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _buildMenuButton(Icons.translate, 'Translate', () {
-                        _showTranslation(_selectionDetails!.selectedText!);
-                      }),
-                      _buildMenuButton(Icons.copy, 'Copy', () {
-                        _pdfViewerController.clearSelection();
-                        _clearTemporaryHighlights();
-                        setState(() => _selectionDetails = null);
-                      }),
-                      _buildMenuButton(Icons.close, 'Cancel', () {
-                        _pdfViewerController.clearSelection();
-                        _clearTemporaryHighlights();
-                        setState(() => _selectionDetails = null);
-                      }),
-                    ],
-                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: _showSelectionActions
+                      ? Row(
+                          children: [
+                            Expanded(
+                              child: _buildLargeActionButton(
+                                icon: Icons.translate,
+                                label: 'Translate',
+                                onTap: () {
+                                  final selected = _tempSelectedText?.trim();
+                                  if (selected == null || selected.isEmpty) {
+                                    return;
+                                  }
+                                  _showTranslation(selected);
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildLargeActionButton(
+                                icon: Icons.copy,
+                                label: 'Copy',
+                                onTap: _copySelectedText,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildLargeActionButton(
+                                icon: Icons.close,
+                                label: 'Cancel',
+                                onTap: _clearSelectionState,
+                              ),
+                            ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Selection ready (${(_tempSelectedText ?? '').length} chars)',
+                                style: const TextStyle(
+                                  color: AppColors.textPrimary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                setState(() => _showSelectionActions = true);
+                              },
+                              icon: const Icon(Icons.touch_app, size: 20),
+                              label: const Text('Actions'),
+                              style: ElevatedButton.styleFrom(
+                                minimumSize: const Size(132, 52),
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              onPressed: _clearSelectionState,
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(88, 52),
+                              ),
+                              child: const Text('Clear'),
+                            ),
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -319,17 +334,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  Widget _buildMenuButton(IconData icon, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: AppColors.primary),
-          const SizedBox(height: 4),
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: AppColors.primary)),
-        ],
+  Widget _buildLargeActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      style: ElevatedButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
       ),
     );
   }
@@ -427,11 +443,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
 
     // Clear selection UI
-    _pdfViewerController.clearSelection();
-    _clearTemporaryHighlights();
-    setState(() {
-      _selectionDetails = null;
-    });
+    _clearSelectionState();
 
     // If word was saved, add instant highlight overlay
     if (result is WordColor) {

@@ -4,7 +4,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../services/translation_service.dart';
 import '../../../services/database_service.dart';
 import '../../../services/pdf_highlight_service.dart';
-import '../../../services/tureng_service.dart';
 import '../../../services/gemini_service.dart';
 import '../../../services/sync_service.dart';
 
@@ -45,7 +44,6 @@ class _TranslationSheetState extends State<TranslationSheet>
     with SingleTickerProviderStateMixin {
   final _translationService = TranslationService();
   final _databaseService = DatabaseService();
-  final _turengService = TurengService();
   final _geminiService = GeminiService();
 
   late final TabController _tabController;
@@ -62,12 +60,6 @@ class _TranslationSheetState extends State<TranslationSheet>
   final _newListNameController = TextEditingController();
   final _noteController = TextEditingController();
 
-  // ── Dictionary tab state ──
-  List<TurengEntry>? _turengResults;
-  bool _isLookingUp = false;
-  String? _turengError;
-  String _turengLanguagePair = 'english-turkish';
-
   // ── Gemini tab state ──
   String? _geminiResult;
   bool _isAskingGemini = false;
@@ -79,7 +71,7 @@ class _TranslationSheetState extends State<TranslationSheet>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
     _translate();
     _loadWordLists();
@@ -98,31 +90,18 @@ class _TranslationSheetState extends State<TranslationSheet>
 
   void _onTabChanged() {
     if (!_tabController.indexIsChanging) return;
-    // Lazy-load Dictionary on first switch
-    if (_tabController.index == 1 && _turengResults == null && !_isLookingUp) {
-      _lookupDictionary();
-    }
     // Lazy-load Gemini on first switch
-    if (_tabController.index == 2 && !_geminiTabLoaded) {
+    if (_tabController.index == 1 && !_geminiTabLoaded) {
       _askGemini();
     }
     setState(() {});
   }
 
   Future<void> _loadUserSettings() async {
-    final pair = await _databaseService.getSetting('tureng_language_pair');
     final targetLanguageCode =
         await _databaseService.getSetting('target_language');
 
     final mappedTarget = _languageCodeToName(targetLanguageCode);
-
-    if (mounted && pair != null) {
-      setState(() {
-        _turengLanguagePair = pair;
-        _geminiTargetLanguage = mappedTarget;
-      });
-      return;
-    }
 
     if (mounted) {
       setState(() {
@@ -280,34 +259,6 @@ class _TranslationSheetState extends State<TranslationSheet>
     }
   }
 
-  // ── Dictionary ─────────────────────────────────────────────────────────────
-
-  Future<void> _lookupDictionary() async {
-    setState(() {
-      _isLookingUp = true;
-      _turengError = null;
-    });
-    try {
-      final results = await _turengService.lookup(
-        widget.word,
-        languagePair: _turengLanguagePair,
-      );
-      if (mounted) {
-        setState(() {
-          _turengResults = results;
-          _isLookingUp = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _turengError = 'Could not load dictionary: $e';
-          _isLookingUp = false;
-        });
-      }
-    }
-  }
-
   Future<void> _saveGeminiAnswerAsNote(String answer) async {
     final note = answer.trim();
     if (note.isEmpty) return;
@@ -427,7 +378,6 @@ class _TranslationSheetState extends State<TranslationSheet>
             indicatorColor: AppColors.primary,
             tabs: const [
               Tab(text: 'Translate'),
-              Tab(text: 'Dictionary'),
               Tab(text: 'Ask Gemini'),
             ],
           ),
@@ -438,7 +388,6 @@ class _TranslationSheetState extends State<TranslationSheet>
               controller: _tabController,
               children: [
                 _buildTranslateTab(),
-                _buildDictionaryTab(),
                 _buildGeminiTab(),
               ],
             ),
@@ -686,211 +635,6 @@ class _TranslationSheetState extends State<TranslationSheet>
         ),
         const SizedBox(height: 24),
       ],
-    );
-  }
-
-  // ── Dictionary Tab ─────────────────────────────────────────────────────────
-
-  Widget _buildDictionaryTab() {
-    // Not yet loaded — prompt to switch here
-    if (_turengResults == null && !_isLookingUp && _turengError == null) {
-      return _buildScrollableCenter(
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.menu_book_outlined,
-                size: 48, color: AppColors.textSecondary),
-            const SizedBox(height: 12),
-            const Text('Tap to look up in dictionary',
-                style: TextStyle(color: AppColors.textSecondary)),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _lookupDictionary,
-              icon: const Icon(Icons.search),
-              label: const Text('Look Up'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_isLookingUp) {
-      return _buildScrollableCenter(const CircularProgressIndicator());
-    }
-
-    if (_turengError != null) {
-      return _buildScrollableCenter(
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.error_outline, color: AppColors.error, size: 40),
-            const SizedBox(height: 12),
-            Text(_turengError!,
-                style: const TextStyle(color: AppColors.error),
-                textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _turengResults = null;
-                  _turengError = null;
-                });
-                _lookupDictionary();
-              },
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (_turengResults!.isEmpty) {
-      return _buildScrollableCenter(
-        Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.search_off,
-                size: 48, color: AppColors.textSecondary),
-            const SizedBox(height: 12),
-            Text(
-              'No results found for "${widget.word}"',
-              style: const TextStyle(color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Language pair: $_turengLanguagePair',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary.withOpacity(0.6)),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Group entries by category
-    final grouped = <String, List<TurengEntry>>{};
-    for (final entry in _turengResults!) {
-      final cat = entry.category.isNotEmpty ? entry.category : 'General';
-      grouped.putIfAbsent(cat, () => []).add(entry);
-    }
-
-    return ListView(
-      controller: widget.scrollController,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        // Language pair badge
-        Row(
-          children: [
-            const Icon(Icons.language,
-                size: 14, color: AppColors.textSecondary),
-            const SizedBox(width: 4),
-            Text(
-              _turengLanguagePair.replaceAll('-', ' ↔ '),
-              style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary.withOpacity(0.7)),
-            ),
-            const Spacer(),
-            Text(
-              '${_turengResults!.length} results',
-              style: TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary.withOpacity(0.7)),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        ...grouped.entries.map((categoryGroup) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Category header
-              if (categoryGroup.key.isNotEmpty &&
-                  categoryGroup.key != 'General') ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    categoryGroup.key,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.primary),
-                  ),
-                ),
-                const SizedBox(height: 6),
-              ] else
-                const SizedBox(height: 8),
-
-              // Entries
-              ...categoryGroup.value
-                  .map((entry) => _buildDictionaryEntry(entry)),
-            ],
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildDictionaryEntry(TurengEntry entry) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Part of speech chip
-          if (entry.partOfSpeech.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              margin: const EdgeInsets.only(right: 10, top: 2),
-              decoration: BoxDecoration(
-                color: AppColors.secondary.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                entry.partOfSpeech,
-                style: const TextStyle(
-                    fontSize: 10,
-                    color: AppColors.secondary,
-                    fontWeight: FontWeight.w600),
-              ),
-            ),
-          Expanded(
-            child: RichText(
-              text: TextSpan(
-                children: [
-                  TextSpan(
-                    text: entry.term,
-                    style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500),
-                  ),
-                  const TextSpan(
-                    text: '  →  ',
-                    style:
-                        TextStyle(color: AppColors.textSecondary, fontSize: 13),
-                  ),
-                  TextSpan(
-                    text: entry.translation,
-                    style: const TextStyle(
-                        color: AppColors.secondary, fontSize: 14),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
