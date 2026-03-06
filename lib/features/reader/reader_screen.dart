@@ -20,6 +20,7 @@ class ReaderScreen extends StatefulWidget {
 class _ReaderScreenState extends State<ReaderScreen> {
   final PdfViewerController _pdfViewerController = PdfViewerController();
   final DatabaseService _databaseService = DatabaseService();
+  late final DateTime _sessionStartedAt;
 
   PdfTextSelectionChangedDetails? _selectionDetails;
   Uint8List? _pdfBytes; // Original PDF bytes (never modified)
@@ -35,7 +36,19 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void initState() {
     super.initState();
+    _sessionStartedAt = DateTime.now();
     _loadPdf();
+  }
+
+  @override
+  void dispose() {
+    final spentMinutes = DateTime.now().difference(_sessionStartedAt).inMinutes;
+    if (spentMinutes > 0) {
+      _databaseService.logLearningActivity(
+        readingMinutesDelta: spentMinutes,
+      );
+    }
+    super.dispose();
   }
 
   /// Load the raw PDF bytes (without any baked highlights)

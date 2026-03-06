@@ -7,26 +7,37 @@ class TranslationResult {
   final String detectedLanguage;
   final String? source;
 
-  TranslationResult({required this.translatedText, required this.detectedLanguage, this.source});
+  TranslationResult(
+      {required this.translatedText,
+      required this.detectedLanguage,
+      this.source});
 }
 
 class TranslationService {
   final _databaseService = DatabaseService();
 
-  Future<TranslationResult> translateText(String text, {String sourceLang = 'auto'}) async {
+  Future<TranslationResult> translateText(
+    String text, {
+    String sourceLang = 'auto',
+    String? targetLang,
+  }) async {
     // 1. Get Settings
     String? deepLKey = await _databaseService.getSetting('deepl_api_key');
-    String? targetLang = await _databaseService.getSetting('target_language');
-    if (targetLang == null || targetLang.trim().isEmpty) {
-      targetLang = 'tr';
+    String resolvedTargetLang = targetLang?.trim() ?? '';
+    if (resolvedTargetLang.isEmpty) {
+      resolvedTargetLang =
+          (await _databaseService.getSetting('target_language')) ?? '';
+    }
+    if (resolvedTargetLang.trim().isEmpty) {
+      resolvedTargetLang = 'tr';
       print('DEBUG: target_language was empty/null, defaulting to "tr"');
     }
 
-    print('DEBUG: Translating "$text" to $targetLang');
+    print('DEBUG: Translating "$text" to $resolvedTargetLang');
     if (deepLKey != null && deepLKey.trim().isNotEmpty) {
       print('DEBUG: Using DeepL API Key: ${deepLKey.substring(0, 5)}...');
       try {
-        return await _translateWithDeepL(text, deepLKey, targetLang);
+        return await _translateWithDeepL(text, deepLKey, resolvedTargetLang);
       } catch (e) {
         print('DEBUG: DeepL failed ($e). Falling back to MyMemory...');
         // Fall through to MyMemory below
@@ -35,14 +46,19 @@ class TranslationService {
 
     // 2. Fallback to MyMemory (Free)
     print('DEBUG: Using MyMemory Fallback');
-    return _translateWithMyMemory(text, targetLang: targetLang, sourceLang: sourceLang);
+    return _translateWithMyMemory(
+      text,
+      targetLang: resolvedTargetLang,
+      sourceLang: sourceLang,
+    );
   }
 
-  Future<TranslationResult> _translateWithDeepL(String text, String apiKey, String targetLang) async {
+  Future<TranslationResult> _translateWithDeepL(
+      String text, String apiKey, String targetLang) async {
     // DeepL target supports 'EN-US' or 'EN-GB', but 'EN' is usually fine (defaults to US)
     // DeepL Free API URL
-    const String baseUrl = 'https://api-free.deepl.com/v2/translate'; 
-    
+    const String baseUrl = 'https://api-free.deepl.com/v2/translate';
+
     try {
       final response = await http.post(
         Uri.parse(baseUrl),
@@ -71,16 +87,17 @@ class TranslationService {
     } catch (e) {
       print('DeepL failed: $e. Falling back...');
       // Allow fallback if DeepL fails? Maybe rethrow for now so user knows key is wrong.
-       throw Exception('DeepL Translation failed. Check API Key. Error: $e');
+      throw Exception('DeepL Translation failed. Check API Key. Error: $e');
     }
   }
 
-  Future<TranslationResult> _translateWithMyMemory(String text, {String targetLang = 'en', String sourceLang = 'auto'}) async {
+  Future<TranslationResult> _translateWithMyMemory(String text,
+      {String targetLang = 'en', String sourceLang = 'auto'}) async {
     const String baseUrl = 'https://api.mymemory.translated.net/get';
     try {
       final source = sourceLang == 'auto' ? 'autodetect' : sourceLang;
       final langPair = '$source|${targetLang.toLowerCase()}';
-      
+
       final uri = Uri.parse(baseUrl).replace(queryParameters: {
         'q': text,
         'langpair': langPair,
@@ -108,5 +125,3 @@ class TranslationService {
     }
   }
 }
-
-

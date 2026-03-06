@@ -6,6 +6,7 @@ import '../../../services/database_service.dart';
 import '../../../services/pdf_highlight_service.dart';
 import '../../../services/gemini_service.dart';
 import '../../../services/sync_service.dart';
+import '../../subscription/paywall_screen.dart';
 
 // Familiarity level colors matching desktop
 const Map<int, Color> levelColors = {
@@ -22,6 +23,21 @@ const Map<int, String> levelLabels = {
   3: 'Learning',
   4: 'Familiar',
   5: 'Mastered',
+};
+
+const Map<String, String> translationTargetLanguages = {
+  'English': 'EN',
+  'Spanish': 'ES',
+  'French': 'FR',
+  'German': 'DE',
+  'Italian': 'IT',
+  'Portuguese': 'PT',
+  'Dutch': 'NL',
+  'Polish': 'PL',
+  'Russian': 'RU',
+  'Japanese': 'JA',
+  'Chinese (Simplified)': 'ZH',
+  'Turkish': 'TR',
 };
 
 class TranslationSheet extends StatefulWidget {
@@ -66,6 +82,7 @@ class _TranslationSheetState extends State<TranslationSheet>
   String?
       _geminiError; // 'not_logged_in', 'premium_required', or free-form error
   bool _geminiTabLoaded = false;
+  String _selectedTargetLanguageCode = 'TR';
   String _geminiTargetLanguage = 'Turkish';
 
   @override
@@ -73,9 +90,8 @@ class _TranslationSheetState extends State<TranslationSheet>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_onTabChanged);
-    _translate();
-    _loadWordLists();
     _loadUserSettings();
+    _loadWordLists();
     _loadExistingNote();
   }
 
@@ -100,14 +116,25 @@ class _TranslationSheetState extends State<TranslationSheet>
   Future<void> _loadUserSettings() async {
     final targetLanguageCode =
         await _databaseService.getSetting('target_language');
-
-    final mappedTarget = _languageCodeToName(targetLanguageCode);
+    final normalizedCode = _normalizeTargetLanguageCode(targetLanguageCode);
+    final mappedTarget = _languageCodeToName(normalizedCode);
 
     if (mounted) {
       setState(() {
+        _selectedTargetLanguageCode = normalizedCode;
         _geminiTargetLanguage = mappedTarget;
       });
     }
+
+    await _translate();
+  }
+
+  String _normalizeTargetLanguageCode(String? code) {
+    final normalized = (code ?? '').trim().toUpperCase();
+    if (translationTargetLanguages.containsValue(normalized)) {
+      return normalized;
+    }
+    return 'TR';
   }
 
   String _languageCodeToName(String? code) {
@@ -126,18 +153,18 @@ class _TranslationSheetState extends State<TranslationSheet>
         return 'Italian';
       case 'pt':
         return 'Portuguese';
+      case 'nl':
+        return 'Dutch';
+      case 'pl':
+        return 'Polish';
       case 'ru':
         return 'Russian';
       case 'ja':
         return 'Japanese';
-      case 'ko':
-        return 'Korean';
       case 'zh':
       case 'zh-cn':
       case 'zh-tw':
-        return 'Chinese';
-      case 'ar':
-        return 'Arabic';
+        return 'Chinese (Simplified)';
       default:
         return 'Turkish';
     }
@@ -146,8 +173,18 @@ class _TranslationSheetState extends State<TranslationSheet>
   // ── Translate ──────────────────────────────────────────────────────────────
 
   Future<void> _translate() async {
+    if (mounted) {
+      setState(() {
+        _isTranslating = true;
+        _translationError = null;
+      });
+    }
+
     try {
-      final result = await _translationService.translateText(widget.word);
+      final result = await _translationService.translateText(
+        widget.word,
+        targetLang: _selectedTargetLanguageCode,
+      );
       if (mounted) {
         setState(() {
           _translation = result.translatedText;
@@ -163,6 +200,22 @@ class _TranslationSheetState extends State<TranslationSheet>
         });
       }
     }
+  }
+
+  Future<void> _onTargetLanguageChanged(String? code) async {
+    if (code == null) return;
+    if (code == _selectedTargetLanguageCode) return;
+
+    setState(() {
+      _selectedTargetLanguageCode = code;
+      _geminiTargetLanguage = _languageCodeToName(code);
+      _geminiResult = null;
+      _geminiError = null;
+      _geminiTabLoaded = false;
+    });
+
+    await _databaseService.saveSetting('target_language', code);
+    await _translate();
   }
 
   Future<void> _loadWordLists() async {
@@ -404,6 +457,25 @@ class _TranslationSheetState extends State<TranslationSheet>
       controller: widget.scrollController,
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       children: [
+        DropdownButtonFormField<String>(
+          value: _selectedTargetLanguageCode,
+          decoration: const InputDecoration(
+            labelText: 'Translation Language',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.language),
+            helperText: 'Saved as your last preference.',
+          ),
+          items: translationTargetLanguages.entries
+              .map(
+                (entry) => DropdownMenuItem(
+                  value: entry.value,
+                  child: Text('${entry.key} (${entry.value})'),
+                ),
+              )
+              .toList(),
+          onChanged: _onTargetLanguageChanged,
+        ),
+        const SizedBox(height: 16),
         if (_isTranslating)
           const Center(child: CircularProgressIndicator())
         else if (_translationError != null)
@@ -766,7 +838,21 @@ class _TranslationSheetState extends State<TranslationSheet>
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () async {
+                  final upgraded = await Navigator.push<bool>(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
+                  );
+                  if (!mounted) return;
+                  if (upgraded == true) {
+                    setState(() {
+                      _geminiError = null;
+                      _geminiResult = null;
+                      _geminiTabLoaded = false;
+                    });
+                    _askGemini();
+                  }
+                },
                 icon: const Icon(Icons.workspace_premium),
                 label: const Text('Upgrade to Premium'),
                 style: ElevatedButton.styleFrom(

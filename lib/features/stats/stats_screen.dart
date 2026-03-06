@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
-import '../../services/database_service.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
+import '../../services/database_service.dart';
 import '../settings/data_management_screen.dart';
 
 class StatsScreen extends StatefulWidget {
@@ -14,11 +16,18 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   final _databaseService = DatabaseService();
   bool _isLoading = true;
+
   Map<String, int> _familiarityStats = {};
   List<Map<String, dynamic>> _upcomingReviews = [];
+  List<Map<String, dynamic>> _dailyQuizActivity = [];
+  Map<String, dynamic> _quizStats = {};
+
+  int _wordsToReview = 0;
   int _overdueCount = 0;
   int _dueTodayCount = 0;
   int _dueSoonCount = 0;
+  int _dueLaterCount = 0;
+  int _masteredScheduledCount = 0;
 
   @override
   void initState() {
@@ -28,30 +37,87 @@ class _StatsScreenState extends State<StatsScreen> {
 
   Future<void> _loadStats() async {
     setState(() => _isLoading = true);
-    final stats = await _databaseService.getFamiliarityStats();
-    final upcoming = await _databaseService.getUpcomingReviews();
-    
-    // Extract counts from upcoming reviews
-    int overdue = 0, today = 0, soon = 0;
-    for (var item in upcoming) {
-      final label = item['review_day'] as String;
-      final count = item['count'] as int;
-      if (label.contains('Overdue')) overdue = count;
-      else if (label.contains('Today')) today = count;
-      else if (label.contains('Soon')) soon = count;
-    }
-    
-    if (mounted) {
+
+    try {
+      final results = await Future.wait<dynamic>([
+        _databaseService.getFamiliarityStats(),
+        _databaseService.getUpcomingReviews(),
+        _databaseService.getWordsToReviewCount(),
+        _databaseService.getQuizPerformanceStats(),
+        _databaseService.getDailyQuizActivity(days: 7),
+      ]);
+
+      final stats = results[0] as Map<String, int>;
+      final upcoming = results[1] as List<Map<String, dynamic>>;
+      final toReviewCount = results[2] as int;
+      final quizStats = results[3] as Map<String, dynamic>;
+      final dailyActivity = results[4] as List<Map<String, dynamic>>;
+
+      int overdue = 0;
+      int today = 0;
+      int soon = 0;
+      int later = 0;
+      int mastered = 0;
+
+      for (final item in upcoming) {
+        final label = (item['review_day'] as String?) ?? '';
+        final count = (item['count'] as int?) ?? 0;
+        if (label.startsWith('Overdue')) {
+          overdue = count;
+        } else if (label.startsWith('Today')) {
+          today = count;
+        } else if (label.startsWith('Soon')) {
+          soon = count;
+        } else if (label.startsWith('Later')) {
+          later = count;
+        } else if (label.startsWith('Mastered')) {
+          mastered = count;
+        }
+      }
+
+      if (!mounted) return;
       setState(() {
         _familiarityStats = stats;
         _upcomingReviews = upcoming;
+        _wordsToReview = toReviewCount;
+        _quizStats = quizStats;
+        _dailyQuizActivity = dailyActivity;
         _overdueCount = overdue;
         _dueTodayCount = today;
         _dueSoonCount = soon;
+        _dueLaterCount = later;
+        _masteredScheduledCount = mastered;
         _isLoading = false;
       });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
     }
   }
+
+  int get _unknownCount => _familiarityStats['Unknown'] ?? 0;
+  int get _seenCount => _familiarityStats['Seen'] ?? 0;
+  int get _learningCount => _familiarityStats['Learning'] ?? 0;
+  int get _masteredCount => _familiarityStats['Mastered'] ?? 0;
+  int get _totalWords =>
+      _unknownCount + _seenCount + _learningCount + _masteredCount;
+
+  double get _masteryPercent {
+    if (_totalWords == 0) return 0;
+    return (_masteredCount / _totalWords) * 100;
+  }
+
+  double get _avgQuizAccuracy =>
+      ((_quizStats['avg_accuracy'] as num?) ?? 0).toDouble();
+  double get _bestQuizAccuracy =>
+      ((_quizStats['best_accuracy'] as num?) ?? 0).toDouble();
+  int get _totalQuizSessions => (_quizStats['total_sessions'] as int?) ?? 0;
+
+  int get _urgentCount => _overdueCount + _dueTodayCount;
+  int get _weeklyQuizSessions => _dailyQuizActivity.fold<int>(
+        0,
+        (sum, item) => sum + ((item['sessions'] as int?) ?? 0),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -60,11 +126,16 @@ class _StatsScreenState extends State<StatsScreen> {
         title: const Text('Statistics'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadStats,
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const DataManagementScreen()),
+                MaterialPageRoute(
+                    builder: (context) => const DataManagementScreen()),
               );
             },
           ),
@@ -74,110 +145,180 @@ class _StatsScreenState extends State<StatsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadStats,
-              child: SingleChildScrollView(
+              child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    // Urgent Review Alert
-                    if (_overdueCount > 0 || _dueTodayCount > 0)
-                      _buildUrgentAlert(),
-                    
-                    // Detailed Status Cards
-                    _buildDetailedCards(),
-                    const SizedBox(height: 24),
-                    
-                    // Mastery Pie Chart with Legend
-                    _buildSectionTitle('Mastery Distribution'),
-                    const SizedBox(height: 16),
-                    _buildMasteryChartWithLegend(),
-                    const SizedBox(height: 32),
-
-                    // Schedule Bar Chart
-                    _buildSectionTitle('Upcoming Reviews'),
-                    const SizedBox(height: 16),
-                    _buildScheduleChart(),
-                    
-                    const SizedBox(height: 32),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                children: [
+                  _buildHeroCard(),
+                  if (_urgentCount > 0) ...[
+                    const SizedBox(height: 14),
+                    _buildUrgentAlert(),
                   ],
-                ),
+                  const SizedBox(height: 16),
+                  _buildKpiGrid(),
+                  const SizedBox(height: 18),
+                  _buildSectionCard(
+                    title: 'Mastery Distribution',
+                    subtitle:
+                        'How your vocabulary is spread across learning stages.',
+                    child: _buildMasteryChartWithLegend(),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSectionCard(
+                    title: 'Review Schedule',
+                    subtitle: 'Cards grouped by urgency and upcoming timing.',
+                    child: _buildScheduleSection(),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSectionCard(
+                    title: '7-Day Quiz Activity',
+                    subtitle: 'Daily quiz sessions this week.',
+                    child: _buildWeeklyActivitySection(),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSectionCard(
+                    title: 'Quiz Performance',
+                    subtitle: 'Your all-time and latest quiz performance.',
+                    child: _buildQuizPerformanceSection(),
+                  ),
+                ],
               ),
             ),
+    );
+  }
+
+  Widget _buildHeroCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.insights, color: Colors.white),
+              const SizedBox(width: 8),
+              const Text(
+                'Learning Health',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${_masteryPercent.round()}% mastered',
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _heroMetric(
+                  label: 'Total Words',
+                  value: '$_totalWords',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _heroMetric(
+                  label: 'Due Now',
+                  value: '$_wordsToReview',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _heroMetric(
+                  label: 'Mastered',
+                  value: '$_masteredCount',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: (_masteryPercent / 100).clamp(0.0, 1.0),
+              minHeight: 9,
+              backgroundColor: Colors.white24,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(Colors.tealAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroMetric({required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildUrgentAlert() {
-    final urgentCount = _overdueCount + _dueTodayCount;
-    final isOverdue = _overdueCount > 0;
-    
+    final hasOverdue = _overdueCount > 0;
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isOverdue 
-            ? [Colors.red.shade400, Colors.red.shade600]
-            : [Colors.orange.shade400, Colors.orange.shade600],
+        color: hasOverdue
+            ? Colors.red.withOpacity(0.12)
+            : Colors.orange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: hasOverdue
+              ? Colors.red.withOpacity(0.4)
+              : Colors.orange.withOpacity(0.4),
         ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: (isOverdue ? Colors.red : Colors.orange).withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              isOverdue ? Icons.warning_amber_rounded : Icons.schedule,
-              color: Colors.white,
-              size: 32,
-            ),
+          Icon(
+            hasOverdue ? Icons.warning_amber_rounded : Icons.schedule,
+            color: hasOverdue ? Colors.redAccent : Colors.orangeAccent,
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 10),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isOverdue ? 'Words Overdue!' : 'Review Due Today',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                Text(
-                  '$urgentCount ${urgentCount == 1 ? 'word needs' : 'words need'} your attention',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-            ),
             child: Text(
-              '$urgentCount',
-              style: TextStyle(
-                color: isOverdue ? Colors.red : Colors.orange,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
+              hasOverdue
+                  ? '$_overdueCount overdue and $_dueTodayCount due today. Prioritize a review session.'
+                  : '$_dueTodayCount cards are due today.',
+              style: const TextStyle(color: AppColors.textPrimary),
             ),
           ),
         ],
@@ -185,165 +326,156 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildDetailedCards() {
-    int total = 0;
-    _familiarityStats.forEach((_, count) => total += count);
-    
-    return Column(
-      children: [
-        // First row: Total and Mastered
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatusCard(
-                'Total Words',
-                total.toString(),
-                Icons.book,
-                Colors.blue,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildStatusCard(
-                'Mastered',
-                _familiarityStats['Mastered']?.toString() ?? '0',
-                Icons.star,
-                Colors.green,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Second row: Overdue, Due Today, Due Soon
-        Row(
-          children: [
-            Expanded(
-              child: _buildCompactStatusCard(
-                'Overdue',
-                _overdueCount.toString(),
-                Colors.red,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildCompactStatusCard(
-                'Due Today',
-                _dueTodayCount.toString(),
-                Colors.orange,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildCompactStatusCard(
-                'Due Soon',
-                _dueSoonCount.toString(),
-                Colors.blue,
-              ),
-            ),
-          ],
-        ),
-      ],
+  Widget _buildKpiGrid() {
+    final cards = [
+      _KpiCardData(
+        title: 'Overdue',
+        value: '$_overdueCount',
+        color: Colors.redAccent,
+        icon: Icons.error_outline,
+      ),
+      _KpiCardData(
+        title: 'Due Today',
+        value: '$_dueTodayCount',
+        color: Colors.orangeAccent,
+        icon: Icons.today,
+      ),
+      _KpiCardData(
+        title: 'Due Soon',
+        value: '$_dueSoonCount',
+        color: Colors.lightBlueAccent,
+        icon: Icons.upcoming,
+      ),
+      _KpiCardData(
+        title: 'Avg Quiz',
+        value: '${_avgQuizAccuracy.round()}%',
+        color: Colors.greenAccent,
+        icon: Icons.emoji_events_outlined,
+      ),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: cards.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: 10,
+        crossAxisSpacing: 10,
+        childAspectRatio: 1.4,
+      ),
+      itemBuilder: (context, index) => _buildKpiCard(cards[index]),
     );
   }
 
-  Widget _buildStatusCard(String title, String value, IconData icon, Color color) {
+  Widget _buildKpiCard(_KpiCardData data) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: data.color.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(data.icon, color: data.color, size: 20),
+          const Spacer(),
+          Text(
+            data.value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: data.color,
+            ),
+          ),
+          Text(
+            data.title,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSectionCard({
+    required String title,
+    required String subtitle,
+    required Widget child,
+  }) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.2)),
+        borderRadius: BorderRadius.circular(16),
+        border:
+            Border.all(color: Theme.of(context).dividerColor.withOpacity(0.2)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
           Text(
             title,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompactStatusCard(String title, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
           Text(
-            title,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-            ),
-            textAlign: TextAlign.center,
+            subtitle,
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
+          const SizedBox(height: 14),
+          child,
         ],
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        title,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
   }
 
   Widget _buildMasteryChartWithLegend() {
     final chartData = [
-      {'label': 'Unknown', 'value': _familiarityStats['Unknown'] ?? 0, 'color': Colors.grey},
-      {'label': 'Seen', 'value': _familiarityStats['Seen'] ?? 0, 'color': Colors.orange},
-      {'label': 'Learning', 'value': _familiarityStats['Learning'] ?? 0, 'color': Colors.blue},
-      {'label': 'Mastered', 'value': _familiarityStats['Mastered'] ?? 0, 'color': Colors.green},
+      _ChartSlice('Unknown', _unknownCount, Colors.grey),
+      _ChartSlice('Seen', _seenCount, Colors.orange),
+      _ChartSlice('Learning', _learningCount, Colors.blue),
+      _ChartSlice('Mastered', _masteredCount, Colors.green),
     ];
-    
+
+    final total = chartData.fold<int>(0, (sum, item) => sum + item.value);
+    if (total == 0) {
+      return const SizedBox(
+        height: 130,
+        child: Center(
+          child: Text(
+            'No familiarity data yet.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+
     return Row(
       children: [
-        // Chart
         Expanded(
           flex: 2,
           child: SizedBox(
-            height: 180,
+            height: 200,
             child: PieChart(
               PieChartData(
                 sectionsSpace: 2,
-                centerSpaceRadius: 35,
-                sections: chartData.map((data) {
-                  final value = data['value'] as int;
+                centerSpaceRadius: 38,
+                sections: chartData.map((item) {
+                  final percent = total == 0 ? 0 : (item.value / total) * 100;
                   return PieChartSectionData(
-                    color: data['color'] as Color,
-                    value: value.toDouble(),
-                    title: value > 0 ? '$value' : '',
-                    radius: 45,
+                    color: item.color,
+                    value: item.value.toDouble(),
+                    title: percent >= 8 ? '${percent.round()}%' : '',
+                    radius: 48,
                     titleStyle: const TextStyle(
+                      color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
                     ),
                   );
                 }).toList(),
@@ -351,29 +483,29 @@ class _StatsScreenState extends State<StatsScreen> {
             ),
           ),
         ),
-        
-        // Legend
+        const SizedBox(width: 8),
         Expanded(
           flex: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: chartData.map((data) {
+            children: chartData.map((item) {
+              final percent = total == 0 ? 0 : (item.value / total) * 100;
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
+                padding: const EdgeInsets.symmetric(vertical: 5),
                 child: Row(
                   children: [
                     Container(
-                      width: 12,
-                      height: 12,
+                      width: 10,
+                      height: 10,
                       decoration: BoxDecoration(
-                        color: data['color'] as Color,
+                        color: item.color,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        data['label'] as String,
+                        '${item.label}  ${item.value} (${percent.round()}%)',
                         style: const TextStyle(fontSize: 12),
                       ),
                     ),
@@ -387,76 +519,396 @@ class _StatsScreenState extends State<StatsScreen> {
     );
   }
 
-  Widget _buildScheduleChart() {
-    if (_upcomingReviews.isEmpty) {
+  Widget _buildScheduleSection() {
+    final totalScheduled = _upcomingReviews.fold<int>(
+      0,
+      (sum, item) => sum + ((item['count'] as int?) ?? 0),
+    );
+    if (_upcomingReviews.isEmpty || totalScheduled == 0) {
       return const SizedBox(
-        height: 100, 
-        child: Center(child: Text('No upcoming reviews scheduled.', style: TextStyle(color: AppColors.textSecondary)))
+        height: 120,
+        child: Center(
+          child: Text(
+            'No upcoming reviews scheduled.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
       );
     }
 
-    return SizedBox(
-      height: 200,
-      child: BarChart(
-        BarChartData(
-          alignment: BarChartAlignment.spaceAround,
-          maxY: _upcomingReviews.map((e) => e['count'] as int).reduce(max).toDouble() + 1,
-          titlesData: FlTitlesData(
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                getTitlesWidget: (value, meta) {
-                  if (value.toInt() >= 0 && value.toInt() < _upcomingReviews.length) {
-                    final label = _upcomingReviews[value.toInt()]['review_day'] as String;
-                    // Shorten labels for mobile
-                    String shortLabel = label;
-                    if (label.contains('Overdue')) shortLabel = 'Late';
-                    else if (label.contains('Today')) shortLabel = 'Today';
-                    else if (label.contains('Soon')) shortLabel = '1-3d';
-                    else if (label.contains('Later')) shortLabel = '4-7d';
-                    else if (label.contains('Mastered')) shortLabel = '7+d';
-                    
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8.0),
-                      child: Text(
-                        shortLabel, 
-                        style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                      ),
+    return Column(
+      children: [
+        SizedBox(
+          height: 210,
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: _upcomingReviews
+                      .map((e) => (e['count'] as int?) ?? 0)
+                      .fold<int>(0, max)
+                      .toDouble() +
+                  1,
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (_) => const FlLine(
+                    color: AppColors.surfaceHighlight, strokeWidth: 1),
+              ),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                leftTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, _) {
+                      final idx = value.toInt();
+                      if (idx < 0 || idx >= _upcomingReviews.length) {
+                        return const SizedBox.shrink();
+                      }
+                      final label =
+                          (_upcomingReviews[idx]['review_day'] as String?) ??
+                              '';
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _scheduleLabelShort(label),
+                          style: const TextStyle(
+                              fontSize: 10, color: AppColors.textSecondary),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              barGroups: _upcomingReviews.asMap().entries.map((entry) {
+                final label = (entry.value['review_day'] as String?) ?? '';
+                final count = ((entry.value['count'] as int?) ?? 0).toDouble();
+                return BarChartGroupData(
+                  x: entry.key,
+                  barRods: [
+                    BarChartRodData(
+                      toY: count,
+                      width: 16,
+                      color: _scheduleColor(label),
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(5)),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _buildMiniPill('Overdue $_overdueCount', Colors.redAccent),
+            _buildMiniPill('Today $_dueTodayCount', Colors.orangeAccent),
+            _buildMiniPill('Soon $_dueSoonCount', Colors.lightBlueAccent),
+            _buildMiniPill('Later $_dueLaterCount', Colors.indigoAccent),
+            _buildMiniPill('7+d $_masteredScheduledCount', Colors.greenAccent),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeeklyActivitySection() {
+    if (_dailyQuizActivity.isEmpty) {
+      return const SizedBox(
+        height: 120,
+        child: Center(
+          child: Text(
+            'No activity data available.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+
+    final maxSessions = _dailyQuizActivity
+        .map((item) => (item['sessions'] as int?) ?? 0)
+        .fold<int>(0, max);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: 190,
+          child: BarChart(
+            BarChartData(
+              alignment: BarChartAlignment.spaceAround,
+              maxY: (maxSessions + 1).toDouble(),
+              gridData: FlGridData(
+                show: true,
+                drawVerticalLine: false,
+                getDrawingHorizontalLine: (_) => const FlLine(
+                    color: AppColors.surfaceHighlight, strokeWidth: 1),
+              ),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                leftTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                rightTitles:
+                    const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    getTitlesWidget: (value, _) {
+                      final idx = value.toInt();
+                      if (idx < 0 || idx >= _dailyQuizActivity.length) {
+                        return const SizedBox.shrink();
+                      }
+                      final day =
+                          (_dailyQuizActivity[idx]['day'] as String?) ?? '';
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          _weekdayLabel(day),
+                          style: const TextStyle(
+                              fontSize: 10, color: AppColors.textSecondary),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              barTouchData: BarTouchData(
+                enabled: true,
+                touchTooltipData: BarTouchTooltipData(
+                  getTooltipItem: (group, _, rod, __) {
+                    final idx = group.x;
+                    if (idx < 0 || idx >= _dailyQuizActivity.length) {
+                      return null;
+                    }
+                    final item = _dailyQuizActivity[idx];
+                    final sessions = (item['sessions'] as int?) ?? 0;
+                    final acc = ((item['avg_accuracy'] as num?) ?? 0)
+                        .toDouble()
+                        .round();
+                    return BarTooltipItem(
+                      '$sessions sessions\n$acc% avg',
+                      const TextStyle(color: Colors.white, fontSize: 11),
                     );
-                  }
-                  return const Text('');
-                },
+                  },
+                ),
+              ),
+              barGroups: _dailyQuizActivity.asMap().entries.map((entry) {
+                final sessions =
+                    ((entry.value['sessions'] as int?) ?? 0).toDouble();
+                return BarChartGroupData(
+                  x: entry.key,
+                  barRods: [
+                    BarChartRodData(
+                      toY: sessions,
+                      width: 14,
+                      color: AppColors.primaryLight,
+                      borderRadius:
+                          const BorderRadius.vertical(top: Radius.circular(5)),
+                    ),
+                  ],
+                );
+              }).toList(),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'You completed $_weeklyQuizSessions quiz sessions in the last 7 days.',
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuizPerformanceSection() {
+    final lastCompleted = (_quizStats['last_completed_at'] as String?) ?? '';
+    final hasLastQuiz = lastCompleted.isNotEmpty;
+
+    String formattedLastDate = '-';
+    if (hasLastQuiz) {
+      try {
+        formattedLastDate =
+            DateFormat('MMM d, HH:mm').format(DateTime.parse(lastCompleted));
+      } catch (_) {
+        formattedLastDate = lastCompleted;
+      }
+    }
+
+    final lastScore = (_quizStats['last_score'] as int?) ?? 0;
+    final lastTotal = (_quizStats['last_total_questions'] as int?) ?? 0;
+    final lastAccuracy =
+        lastTotal > 0 ? ((lastScore / lastTotal) * 100).round() : 0;
+
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _metricTile(
+                label: 'Total Quizzes',
+                value: '$_totalQuizSessions',
+                color: Colors.indigoAccent,
               ),
             ),
-            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _metricTile(
+                label: 'Best Accuracy',
+                value: '${_bestQuizAccuracy.round()}%',
+                color: Colors.greenAccent,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: _metricTile(
+                label: 'Average Accuracy',
+                value: '${_avgQuizAccuracy.round()}%',
+                color: Colors.lightBlueAccent,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _metricTile(
+                label: 'Last Quiz',
+                value: hasLastQuiz ? '$lastAccuracy%' : '-',
+                color: Colors.orangeAccent,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceHighlight.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(10),
           ),
-          gridData: const FlGridData(show: false),
-          borderData: FlBorderData(show: false),
-          barGroups: _upcomingReviews.asMap().entries.map((entry) {
-            Color barColor = AppColors.primary;
-            final label = entry.value['review_day'] as String;
-             if (label.contains('Overdue')) barColor = Colors.red;
-             if (label.contains('Today')) barColor = Colors.orange;
-             if (label.contains('Mastered')) barColor = Colors.green;
+          child: Text(
+            hasLastQuiz
+                ? 'Last quiz: $lastScore/$lastTotal on $formattedLastDate'
+                : 'No quiz history yet. Complete your first quiz to see performance stats.',
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
 
-            return BarChartGroupData(
-              x: entry.key,
-              barRods: [
-                BarChartRodData(
-                  toY: (entry.value['count'] as int).toDouble(),
-                  color: barColor,
-                  width: 16,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                ),
-              ],
-            );
-          }).toList(),
+  Widget _metricTile({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiniPill(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
   }
-  
-  int max(int a, int b) => a > b ? a : b;
+
+  String _scheduleLabelShort(String label) {
+    if (label.startsWith('Overdue')) return 'Late';
+    if (label.startsWith('Today')) return 'Today';
+    if (label.startsWith('Soon')) return '1-3d';
+    if (label.startsWith('Later')) return '4-7d';
+    return '7+d';
+  }
+
+  Color _scheduleColor(String label) {
+    if (label.startsWith('Overdue')) return Colors.redAccent;
+    if (label.startsWith('Today')) return Colors.orangeAccent;
+    if (label.startsWith('Soon')) return Colors.lightBlueAccent;
+    if (label.startsWith('Later')) return Colors.indigoAccent;
+    return Colors.greenAccent;
+  }
+
+  String _weekdayLabel(String dateString) {
+    try {
+      final date = DateTime.parse(dateString);
+      return DateFormat('E').format(date);
+    } catch (_) {
+      return '-';
+    }
+  }
+}
+
+class _KpiCardData {
+  const _KpiCardData({
+    required this.title,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  final String title;
+  final String value;
+  final Color color;
+  final IconData icon;
+}
+
+class _ChartSlice {
+  const _ChartSlice(this.label, this.value, this.color);
+
+  final String label;
+  final int value;
+  final Color color;
 }

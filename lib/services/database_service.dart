@@ -22,7 +22,7 @@ class DatabaseService {
     String path = join(documentsDirectory.path, 'linguareader.db');
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -114,6 +114,37 @@ class DatabaseService {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS user_profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        display_name TEXT NOT NULL,
+        native_language TEXT,
+        target_language TEXT,
+        learning_goal TEXT NOT NULL,
+        discovery_source TEXT NOT NULL,
+        daily_goal_words INTEGER DEFAULT 10,
+        onboarding_completed INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS learning_activity (
+        activity_date TEXT PRIMARY KEY,
+        words_learned INTEGER DEFAULT 0,
+        reviews_completed INTEGER DEFAULT 0,
+        reading_minutes INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_word_familiarity_next_review
+      ON word_familiarity(next_review_date)
+    ''');
+
     // Default Settings
     // Default Settings
     await db.insert('user_settings', {'key': 'target_language', 'value': 'tr'},
@@ -164,6 +195,273 @@ class DatabaseService {
         print("Migration error (might be okay if column exists): $e");
       }
     }
+    if (oldVersion < 4) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS user_profile (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          display_name TEXT NOT NULL,
+          native_language TEXT,
+          target_language TEXT,
+          learning_goal TEXT NOT NULL,
+          discovery_source TEXT NOT NULL,
+          daily_goal_words INTEGER DEFAULT 10,
+          onboarding_completed INTEGER DEFAULT 1,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS learning_activity (
+          activity_date TEXT PRIMARY KEY,
+          words_learned INTEGER DEFAULT 0,
+          reviews_completed INTEGER DEFAULT 0,
+          reading_minutes INTEGER DEFAULT 0,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      ''');
+
+      await db.execute('''
+        CREATE INDEX IF NOT EXISTS idx_word_familiarity_next_review
+        ON word_familiarity(next_review_date)
+      ''');
+    }
+  }
+
+  String _dayKey(DateTime date) => date.toIso8601String().split('T').first;
+
+  // --- Profile & Retention ---
+  Future<Map<String, dynamic>?> getUserProfile() async {
+    final db = await database;
+    final rows = await db.query(
+      'user_profile',
+      orderBy: 'updated_at DESC, id DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first;
+  }
+
+  Future<bool> isUserProfileComplete() async {
+    final profile = await getUserProfile();
+    if (profile == null) return false;
+    return (profile['onboarding_completed'] as int? ?? 0) == 1;
+  }
+
+  Future<void> saveUserProfile({
+    required String displayName,
+    required String learningGoal,
+    required String discoverySource,
+    String? nativeLanguage,
+    String? targetLanguage,
+    int dailyGoalWords = 10,
+    bool onboardingCompleted = true,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final existing = await getUserProfile();
+
+    final values = <String, dynamic>{
+      'display_name': displayName.trim(),
+      'native_language': nativeLanguage?.trim(),
+      'target_language': targetLanguage?.trim(),
+      'learning_goal': learningGoal.trim(),
+      'discovery_source': discoverySource.trim(),
+      'daily_goal_words': dailyGoalWords < 1 ? 1 : dailyGoalWords,
+      'onboarding_completed': onboardingCompleted ? 1 : 0,
+      'updated_at': now,
+    };
+
+    if (existing == null) {
+      values['created_at'] = now;
+      await db.insert('user_profile', values);
+    } else {
+      await db.update(
+        'user_profile',
+        values,
+        where: 'id = ?',
+        whereArgs: [existing['id']],
+      );
+    }
+  }
+
+  Future<void> logLearningActivity({
+    int wordsLearnedDelta = 0,
+    int reviewsCompletedDelta = 0,
+    int readingMinutesDelta = 0,
+  }) async {
+    if (wordsLearnedDelta == 0 &&
+        reviewsCompletedDelta == 0 &&
+        readingMinutesDelta == 0) {
+      return;
+    }
+
+    final db = await database;
+    final day = _dayKey(DateTime.now());
+    final now = DateTime.now().toIso8601String();
+
+    final existing = await db.query(
+      'learning_activity',
+      where: 'activity_date = ?',
+      whereArgs: [day],
+      limit: 1,
+    );
+
+    if (existing.isEmpty) {
+      await db.insert('learning_activity', {
+        'activity_date': day,
+        'words_learned': wordsLearnedDelta < 0 ? 0 : wordsLearnedDelta,
+        'reviews_completed':
+            reviewsCompletedDelta < 0 ? 0 : reviewsCompletedDelta,
+        'reading_minutes': readingMinutesDelta < 0 ? 0 : readingMinutesDelta,
+        'created_at': now,
+        'updated_at': now,
+      });
+      return;
+    }
+
+    final row = existing.first;
+    await db.update(
+      'learning_activity',
+      {
+        'words_learned':
+            (row['words_learned'] as int? ?? 0) + wordsLearnedDelta,
+        'reviews_completed':
+            (row['reviews_completed'] as int? ?? 0) + reviewsCompletedDelta,
+        'reading_minutes':
+            (row['reading_minutes'] as int? ?? 0) + readingMinutesDelta,
+        'updated_at': now,
+      },
+      where: 'activity_date = ?',
+      whereArgs: [day],
+    );
+  }
+
+  Future<Map<String, int>> getTodayLearningActivity() async {
+    final db = await database;
+    final day = _dayKey(DateTime.now());
+    final rows = await db.query(
+      'learning_activity',
+      where: 'activity_date = ?',
+      whereArgs: [day],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return {
+        'words_learned': 0,
+        'reviews_completed': 0,
+        'reading_minutes': 0,
+      };
+    }
+    final row = rows.first;
+    return {
+      'words_learned': row['words_learned'] as int? ?? 0,
+      'reviews_completed': row['reviews_completed'] as int? ?? 0,
+      'reading_minutes': row['reading_minutes'] as int? ?? 0,
+    };
+  }
+
+  Future<Map<String, int>> getLearningStreakStats() async {
+    final db = await database;
+    final rows = await db.query(
+      'learning_activity',
+      columns: [
+        'activity_date',
+        'words_learned',
+        'reviews_completed',
+        'reading_minutes'
+      ],
+      orderBy: 'activity_date ASC',
+    );
+
+    final activeDays = rows
+        .where((row) {
+          final words = row['words_learned'] as int? ?? 0;
+          final reviews = row['reviews_completed'] as int? ?? 0;
+          final reading = row['reading_minutes'] as int? ?? 0;
+          return words > 0 || reviews > 0 || reading > 0;
+        })
+        .map((row) => row['activity_date'] as String)
+        .toSet();
+
+    if (activeDays.isEmpty) {
+      return {'current': 0, 'longest': 0};
+    }
+
+    final sortedDates = activeDays.toList()..sort();
+    int longest = 1;
+    int run = 1;
+
+    for (int i = 1; i < sortedDates.length; i++) {
+      final prev = DateTime.parse(sortedDates[i - 1]);
+      final curr = DateTime.parse(sortedDates[i]);
+      if (curr.difference(prev).inDays == 1) {
+        run += 1;
+      } else {
+        run = 1;
+      }
+      if (run > longest) longest = run;
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTime? anchor;
+    if (activeDays.contains(_dayKey(today))) {
+      anchor = today;
+    } else {
+      final yesterday = today.subtract(const Duration(days: 1));
+      if (activeDays.contains(_dayKey(yesterday))) {
+        anchor = yesterday;
+      }
+    }
+
+    int current = 0;
+    if (anchor != null) {
+      var cursor = anchor;
+      while (activeDays.contains(_dayKey(cursor))) {
+        current += 1;
+        cursor = cursor.subtract(const Duration(days: 1));
+      }
+    }
+
+    return {'current': current, 'longest': longest};
+  }
+
+  Future<Map<String, dynamic>> getRetentionOverview() async {
+    final profile = await getUserProfile();
+    final today = await getTodayLearningActivity();
+    final streak = await getLearningStreakStats();
+    final goal = (profile?['daily_goal_words'] as int?) ?? 10;
+    final wordsLearned = today['words_learned'] ?? 0;
+    final goalProgress =
+        goal <= 0 ? 0.0 : (wordsLearned / goal).clamp(0.0, 1.0);
+
+    return {
+      'daily_goal_words': goal,
+      'today_words_learned': wordsLearned,
+      'today_reviews_completed': today['reviews_completed'] ?? 0,
+      'today_reading_minutes': today['reading_minutes'] ?? 0,
+      'goal_progress': goalProgress,
+      'streak_current': streak['current'] ?? 0,
+      'streak_longest': streak['longest'] ?? 0,
+    };
+  }
+
+  Future<void> saveQuizResult({
+    required int wordListId,
+    required int score,
+    required int totalQuestions,
+    required String quizType,
+  }) async {
+    final db = await database;
+    await db.insert('quiz_results', {
+      'word_list_id': wordListId,
+      'score': score < 0 ? 0 : score,
+      'total_questions': totalQuestions < 0 ? 0 : totalQuestions,
+      'quiz_type': quizType,
+      'completed_at': DateTime.now().toIso8601String(),
+    });
   }
 
   // --- Word Lists ---
@@ -184,14 +482,6 @@ class DatabaseService {
 
   Future<void> deleteWordList(int id) async {
     final db = await database;
-
-    // 1. Get all words in this list
-    final words = await db.rawQuery('''
-      SELECT w.id, w.word 
-      FROM words w
-      JOIN word_list_items wli ON w.id = wli.word_id
-      WHERE wli.word_list_id = ?
-    ''', [id]);
 
     // 2. Delete words specific to this list (orphans)
     // Desktop logic: Deletes words that are ONLY in this list (orphaned after list deletion)
@@ -305,6 +595,8 @@ class DatabaseService {
               .toIso8601String(), // Start review immediately or next day
         },
         conflictAlgorithm: ConflictAlgorithm.ignore);
+
+    await logLearningActivity(wordsLearnedDelta: 1);
 
     return wordId;
   }
@@ -428,7 +720,6 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getUpcomingReviews() async {
     final db = await database;
     final now = DateTime.now();
-    final todayStr = now.toIso8601String().split('T')[0];
 
     // Get all future reviews
     final List<Map<String, dynamic>> result = await db.rawQuery('''
@@ -486,6 +777,126 @@ class DatabaseService {
       ORDER BY wf.next_review_date ASC
       LIMIT 20
     ''', [now]);
+  }
+
+  Future<Map<String, dynamic>> getQuizPerformanceStats() async {
+    final db = await database;
+
+    final summaryRows = await db.rawQuery('''
+      SELECT
+        COUNT(*) as total_sessions,
+        AVG(CASE WHEN total_questions > 0 THEN (score * 100.0 / total_questions) END) as avg_accuracy,
+        MAX(CASE WHEN total_questions > 0 THEN (score * 100.0 / total_questions) END) as best_accuracy
+      FROM quiz_results
+    ''');
+
+    final summary =
+        summaryRows.isNotEmpty ? summaryRows.first : <String, Object?>{};
+
+    final lastRows = await db.rawQuery('''
+      SELECT score, total_questions, quiz_type, completed_at
+      FROM quiz_results
+      ORDER BY completed_at DESC
+      LIMIT 1
+    ''');
+    final last = lastRows.isNotEmpty ? lastRows.first : <String, Object?>{};
+
+    final totalSessions = (summary['total_sessions'] as int?) ?? 0;
+    final avgAccuracy = (summary['avg_accuracy'] as num?)?.toDouble() ?? 0;
+    final bestAccuracy = (summary['best_accuracy'] as num?)?.toDouble() ?? 0;
+
+    return {
+      'total_sessions': totalSessions,
+      'avg_accuracy': avgAccuracy,
+      'best_accuracy': bestAccuracy,
+      'last_score': (last['score'] as int?) ?? 0,
+      'last_total_questions': (last['total_questions'] as int?) ?? 0,
+      'last_quiz_type': (last['quiz_type'] as String?) ?? '',
+      'last_completed_at': (last['completed_at'] as String?) ?? '',
+    };
+  }
+
+  Future<List<Map<String, dynamic>>> getDailyQuizActivity(
+      {int days = 7}) async {
+    final db = await database;
+    final safeDays = days < 1 ? 1 : days;
+    final now = DateTime.now();
+    final startDate = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: safeDays - 1));
+    final startIso = startDate.toIso8601String();
+
+    final rows = await db.rawQuery('''
+      SELECT
+        substr(completed_at, 1, 10) as day,
+        COUNT(*) as sessions,
+        AVG(CASE WHEN total_questions > 0 THEN (score * 100.0 / total_questions) END) as avg_accuracy
+      FROM quiz_results
+      WHERE completed_at >= ?
+      GROUP BY day
+      ORDER BY day ASC
+    ''', [startIso]);
+
+    final byDay = <String, Map<String, dynamic>>{};
+    for (final row in rows) {
+      final day = (row['day'] as String?) ?? '';
+      if (day.isEmpty) continue;
+      byDay[day] = {
+        'sessions': (row['sessions'] as int?) ?? 0,
+        'avg_accuracy': (row['avg_accuracy'] as num?)?.toDouble() ?? 0,
+      };
+    }
+
+    final output = <Map<String, dynamic>>[];
+    for (var i = 0; i < safeDays; i++) {
+      final date = startDate.add(Duration(days: i));
+      final dayKey = date.toIso8601String().split('T').first;
+      final item = byDay[dayKey];
+      output.add({
+        'day': dayKey,
+        'sessions': item?['sessions'] ?? 0,
+        'avg_accuracy': item?['avg_accuracy'] ?? 0.0,
+      });
+    }
+
+    return output;
+  }
+
+  Future<int?> getOrCreateWordFamiliarityId(String wordLower,
+      {String? translation}) async {
+    final db = await database;
+    final normalizedWord = wordLower.toLowerCase();
+
+    final existing = await db.query(
+      'word_familiarity',
+      columns: ['id'],
+      where: 'word_lower = ?',
+      whereArgs: [normalizedWord],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      return existing.first['id'] as int;
+    }
+
+    await db.insert(
+      'word_familiarity',
+      {
+        'word_lower': normalizedWord,
+        'translation': translation,
+        'next_review_date': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+
+    final created = await db.query(
+      'word_familiarity',
+      columns: ['id'],
+      where: 'word_lower = ?',
+      whereArgs: [normalizedWord],
+      limit: 1,
+    );
+
+    if (created.isEmpty) return null;
+    return created.first['id'] as int;
   }
 
   Future<void> updateWordFamiliarity(int id, int quality) async {
@@ -566,6 +977,8 @@ class DatabaseService {
       'quizResults': await db.query('quiz_results'),
       'userSettings': await db.query('user_settings'),
       'wordFamiliarity': await db.query('word_familiarity'),
+      'userProfile': await db.query('user_profile'),
+      'learningActivity': await db.query('learning_activity'),
     };
   }
 
@@ -714,6 +1127,22 @@ class DatabaseService {
       if (data['wordFamiliarity'] != null) {
         for (var item in data['wordFamiliarity']) {
           await txn.insert('word_familiarity', item,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      // --- 7. Import Profile ---
+      if (data['userProfile'] != null) {
+        for (var item in data['userProfile']) {
+          await txn.insert('user_profile', item,
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+      }
+
+      // --- 8. Import Learning Activity ---
+      if (data['learningActivity'] != null) {
+        for (var item in data['learningActivity']) {
+          await txn.insert('learning_activity', item,
               conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
