@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
 import '../../services/database_service.dart';
 import '../../services/sync_service.dart';
 import 'word_list_detail_screen.dart';
@@ -17,34 +18,15 @@ class _WordListScreenState extends State<WordListScreen> {
   bool _isLoading = true;
 
   final List<Color> _availableColors = [
-    Colors.blue,
-    Colors.red,
-    Colors.green,
-    Colors.orange,
-    Colors.purple,
-    Colors.teal,
-    Colors.pink,
-    Colors.amber,
-    Colors.brown,
-    Colors.indigo,
-    Colors.cyan,
-    Colors.blueGrey,
-    // Expanded Palette
-    const Color(0xFFEF4444), // Red 500
-    const Color(0xFFF97316), // Orange 500
-    const Color(0xFFEAB308), // Yellow 500
-    const Color(0xFF22C55E), // Green 500
-    const Color(0xFF10B981), // Emerald 500
-    const Color(0xFF14B8A6), // Teal 500
-    const Color(0xFF06B6D4), // Cyan 500
-    const Color(0xFF0EA5E9), // Sky 500
-    const Color(0xFF3B82F6), // Blue 500
-    const Color(0xFF6366F1), // Indigo 500
-    const Color(0xFF8B5CF6), // Violet 500
-    const Color(0xFFA855F7), // Purple 500
-    const Color(0xFFD946EF), // Fuchsia 500
-    const Color(0xFFEC4899), // Pink 500
-    const Color(0xFFF43F5E), // Rose 500
+    AppColors.primary,
+    AppColors.primaryDark,
+    AppColors.primaryLight,
+    AppColors.secondary,
+    AppColors.success,
+    AppColors.warning,
+    const Color(0xFF8D633C),
+    const Color(0xFFAA7D4A),
+    const Color(0xFF5A4030),
   ];
 
   @override
@@ -97,23 +79,18 @@ class _WordListScreenState extends State<WordListScreen> {
                         setState(() => selectedColor = color);
                       },
                       child: Container(
-                        width: 32,
-                        height: 32,
+                        width: 28,
+                        height: 28,
                         decoration: BoxDecoration(
                             color: color,
-                            shape: BoxShape.circle,
+                            borderRadius: BorderRadius.circular(4),
                             border: selectedColor == color
-                                ? Border.all(color: Colors.black, width: 2)
-                                : null,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.1),
-                                blurRadius: 4,
-                              )
-                            ]),
+                                ? Border.all(
+                                    color: AppColors.textPrimary, width: 2)
+                                : Border.all(color: AppColors.border)),
                         child: selectedColor == color
                             ? const Icon(Icons.check,
-                                color: Colors.white, size: 20)
+                                color: Colors.white, size: 18)
                             : null,
                       ),
                     );
@@ -150,7 +127,7 @@ class _WordListScreenState extends State<WordListScreen> {
   }
 
   Color _getColor(String? colorStr) {
-    if (colorStr == null) return Colors.blue;
+    if (colorStr == null) return AppColors.primary;
     try {
       if (colorStr.startsWith('#')) {
         // Handle CSS hex (#RRGGBB)
@@ -162,7 +139,7 @@ class _WordListScreenState extends State<WordListScreen> {
       // Handle Flutter 0x... or plain int
       return Color(int.parse(colorStr));
     } catch (e) {
-      return Colors.blue;
+      return AppColors.primary;
     }
   }
 
@@ -207,6 +184,11 @@ class _WordListScreenState extends State<WordListScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
+                        const FoxSpriteAnimator(
+                          animation: FoxAnimation.idleSouth,
+                          size: 84,
+                        ),
+                        const SizedBox(height: 8),
                         const Text("No word lists yet."),
                         const SizedBox(height: 16),
                         ElevatedButton(
@@ -234,7 +216,7 @@ class _WordListScreenState extends State<WordListScreen> {
                                   ? (list['name'] as String)[0].toUpperCase()
                                   : '?',
                               style: const TextStyle(
-                                  color: Colors.white,
+                                  color: AppColors.textPrimary,
                                   fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -272,7 +254,6 @@ class _WordListScreenState extends State<WordListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showCreateListDialog,
-        backgroundColor: AppColors.primary,
         child: const Icon(Icons.add),
       ),
     );

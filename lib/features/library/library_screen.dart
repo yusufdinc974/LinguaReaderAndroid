@@ -1,6 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_card.dart';
 import '../../services/database_service.dart';
 import '../reader/reader_screen.dart';
 
@@ -23,7 +25,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (result != null) {
       final path = result.files.single.path;
       final name = result.files.single.name;
-      
+
       if (path != null) {
         // Save to DB
         await _databaseService.addRecentPdf(name, path);
@@ -31,7 +33,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         // Navigate to Reader
         if (mounted) {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => ReaderScreen(filePath: path)),
+            MaterialPageRoute(
+                builder: (context) => ReaderScreen(filePath: path)),
           );
         }
       }
@@ -51,13 +54,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.border, width: 2),
                 ),
-                child: Icon(
-                  Icons.library_books_rounded, 
-                  size: 64, 
-                  color: AppColors.primary,
+                child: const FoxSpriteAnimator(
+                  animation: FoxAnimation.idleSouth,
+                  size: 80,
                 ),
               ),
               const SizedBox(height: 24),
@@ -65,27 +68,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 'Your Library is Empty',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
               ),
               const SizedBox(height: 12),
               Text(
                 'Import PDF books to start building your personal collection and tracking your vocabulary.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondary,
-                  height: 1.5,
-                ),
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
               ),
               const SizedBox(height: 32),
               SizedBox(
                 width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _pickFile,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text("Import PDF Book"),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                child: PixelCard(
+                  child: ElevatedButton.icon(
+                    onPressed: _pickFile,
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text("Import PDF Book"),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
                   ),
                 ),
               ),

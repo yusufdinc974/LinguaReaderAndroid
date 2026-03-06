@@ -4,6 +4,8 @@ import '../../services/database_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/subscription_service.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_card.dart';
 import '../../main.dart';
 import '../auth/auth_screen.dart';
 import '../subscription/paywall_screen.dart';
@@ -64,6 +66,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                const FoxMascotHeader(
+                  title: 'Settings',
+                  subtitle: 'Tune your reader with fox-friendly controls.',
+                  animation: FoxAnimation.yawnSouth,
+                ),
+                const SizedBox(height: 18),
                 // Theme Toggle Section
                 const Text(
                   'Appearance',
@@ -74,14 +82,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Theme.of(context).dividerColor.withOpacity(0.2),
-                    ),
-                  ),
+                PixelCard(
                   child: ListTile(
                     leading: Icon(
                       isDarkMode ? Icons.dark_mode : Icons.light_mode,
@@ -118,20 +119,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: TextStyle(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 16),
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Theme.of(context).dividerColor.withOpacity(0.2),
-                    ),
-                  ),
+                PixelCard(
                   child: ListTile(
                     leading: Icon(
                       _isPremium
                           ? Icons.verified
                           : Icons.workspace_premium_outlined,
-                      color: _isPremium ? Colors.green : Colors.amber,
+                      color: _isPremium ? AppColors.success : AppColors.warning,
                     ),
                     title: Text(
                         _isPremium ? 'Premium Active' : 'Upgrade to Premium'),
@@ -144,7 +138,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       onPressed: _openPremiumPage,
                       style: ElevatedButton.styleFrom(
                         backgroundColor:
-                            _isPremium ? Colors.green : AppColors.primary,
+                            _isPremium ? AppColors.success : AppColors.primary,
                         foregroundColor: Colors.white,
                       ),
                       child: Text(_isPremium ? 'Manage' : 'View Plans'),

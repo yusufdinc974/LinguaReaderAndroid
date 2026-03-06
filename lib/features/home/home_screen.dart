@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_card.dart';
 import '../../services/database_service.dart';
 import '../../services/subscription_service.dart';
 import '../reader/reader_screen.dart';
@@ -135,8 +137,6 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 14),
               _buildTodayPlanCard(),
               const SizedBox(height: 14),
-              _buildQuickActions(),
-              const SizedBox(height: 18),
               if (!_isPremium) ...[
                 _buildPremiumBanner(),
                 const SizedBox(height: 20),
@@ -154,49 +154,45 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildHeroCard() {
     final target = (_profile?['target_language'] as String?) ?? '-';
 
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
+    return PixelCard(
+      color: Theme.of(context).colorScheme.surface,
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const FoxSpriteAnimator(
+                animation: FoxAnimation.jumpEast,
+                size: 66,
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Welcome back, $_name',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 22,
-                  ),
+                  'Welcome, $_name',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: AppColors.primaryLight,
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
               ),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.14),
-                  borderRadius: BorderRadius.circular(999),
+                  color: AppColors.primary.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.primary, width: 1.5),
                 ),
                 child: Row(
                   children: [
                     const Icon(Icons.local_fire_department,
-                        color: Colors.orangeAccent, size: 18),
+                        color: AppColors.warning, size: 18),
                     const SizedBox(width: 6),
                     Text(
-                      '$_currentStreak day streak',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                      ),
+                      '$_currentStreak streak',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
@@ -206,7 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 10),
           Text(
             'Target language: $target',
-            style: const TextStyle(color: Colors.white70),
+            style: const TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
           Row(
@@ -227,13 +223,13 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 14),
           ClipRRect(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: _goalProgress.clamp(0.0, 1.0),
               minHeight: 9,
-              backgroundColor: Colors.white24,
+              backgroundColor: AppColors.surfaceHighlight,
               valueColor:
-                  const AlwaysStoppedAnimation<Color>(Colors.greenAccent),
+                  const AlwaysStoppedAnimation<Color>(AppColors.success),
             ),
           ),
         ],
@@ -245,8 +241,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
+        color: AppColors.surfaceHighlight.withOpacity(0.65),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -254,14 +251,15 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               fontWeight: FontWeight.w800,
               fontSize: 18,
             ),
           ),
           Text(
             label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
         ],
       ),
@@ -269,14 +267,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTodayPlanCard() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: Theme.of(context).dividerColor.withOpacity(0.2)),
-      ),
+    return PixelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -329,8 +320,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.primary.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.surfaceHighlight.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,86 +342,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildQuickActions() {
-    return _quickAction(
-      icon: Icons.settings_outlined,
-      title: 'Settings',
-      subtitle: 'Customize app',
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SettingsScreen()),
-        ).then((_) => _loadData());
-      },
-    );
-  }
 
-  Widget _quickAction({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-              color: Theme.of(context).dividerColor.withOpacity(0.2)),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: AppColors.primary),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 14)),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildPremiumBanner() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4C1D95), Color(0xFF1D4ED8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
+    return PixelCard(
+      color: AppColors.primaryDark.withOpacity(0.45),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.auto_awesome, color: Colors.amber),
-              SizedBox(width: 8),
-              Text(
+              const FoxSpriteAnimator(
+                animation: FoxAnimation.yawnSouth,
+                size: 54,
+              ),
+              const SizedBox(width: 10),
+              const Text(
                 'Premium',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                 ),
@@ -439,18 +371,13 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(height: 8),
           const Text(
             'Unlock Gemini explanations, advanced stats, and unlimited learning tools.',
-            style: TextStyle(color: Colors.white70),
+            style: TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
               onPressed: _openPremiumPage,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF312E81),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
               icon: const Icon(Icons.workspace_premium),
               label: const Text('View Premium Plans'),
             ),
@@ -480,26 +407,25 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: Theme.of(context).dividerColor.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.border, width: 2),
         ),
         child: Column(
           children: [
-            Icon(Icons.library_books_outlined,
-                size: 48, color: Theme.of(context).disabledColor),
+            const FoxSpriteAnimator(
+                animation: FoxAnimation.idleSouth, size: 78),
             const SizedBox(height: 16),
             Text(
               'No recent books found',
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Theme.of(context).disabledColor,
+                    color: AppColors.textSecondary,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
               'Import a PDF to get started',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).disabledColor,
+                    color: AppColors.textSecondary,
                   ),
             ),
           ],
@@ -528,14 +454,8 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 120,
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border, width: 2),
               ),
               clipBehavior: Clip.antiAlias,
               child: Column(
@@ -545,18 +465,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     flex: 3,
                     child: Container(
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
-                        image: const DecorationImage(
-                          image: AssetImage(
-                              'assets/pdf_cover_placeholder.png'), // Placeholder
-                          fit: BoxFit.cover,
-                        ),
+                        color: AppColors.surfaceHighlight.withOpacity(0.45),
                       ),
                       child: Center(
                         child: Icon(
                           Icons.picture_as_pdf_outlined,
                           size: 40,
-                          color: AppColors.primary.withOpacity(0.6),
+                          color: AppColors.primary.withOpacity(0.8),
                         ),
                       ),
                     ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/fox_sprite.dart';
 import '../../../services/translation_service.dart';
 import '../../../services/database_service.dart';
 import '../../../services/pdf_highlight_service.dart';
@@ -10,11 +11,11 @@ import '../../subscription/paywall_screen.dart';
 
 // Familiarity level colors matching desktop
 const Map<int, Color> levelColors = {
-  1: Color(0xFFef4444), // Red - unknown
-  2: Color(0xFFf97316), // Orange - seen before
-  3: Color(0xFFeab308), // Yellow - learning
-  4: Color(0xFF22c55e), // Green - familiar
-  5: Color(0xFF3b82f6), // Blue - mastered
+  1: AppColors.error,
+  2: AppColors.warning,
+  3: AppColors.secondary,
+  4: AppColors.primary,
+  5: AppColors.success,
 };
 
 const Map<int, String> levelLabels = {
@@ -387,9 +388,10 @@ class _TranslationSheetState extends State<TranslationSheet>
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+        border: Border.all(color: AppColors.border, width: 2),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -401,7 +403,7 @@ class _TranslationSheetState extends State<TranslationSheet>
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.textSecondary.withOpacity(0.3),
+                color: AppColors.surfaceHighlight,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -538,11 +540,11 @@ class _TranslationSheetState extends State<TranslationSheet>
                     decoration: BoxDecoration(
                       color: isSelected
                           ? levelColors[level]
-                          : levelColors[level]!.withOpacity(0.3),
-                      shape: BoxShape.circle,
+                          : levelColors[level]!.withOpacity(0.25),
+                      borderRadius: BorderRadius.circular(6),
                       border: isSelected
-                          ? Border.all(color: Colors.white, width: 3)
-                          : null,
+                          ? Border.all(color: AppColors.textPrimary, width: 2)
+                          : Border.all(color: AppColors.border),
                     ),
                     child: Center(
                       child: Text(
@@ -616,8 +618,9 @@ class _TranslationSheetState extends State<TranslationSheet>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHighlight.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.surfaceHighlight.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.border),
               ),
               child: const Text('No word lists yet. Create one below!',
                   style: TextStyle(color: AppColors.textSecondary),
@@ -651,8 +654,9 @@ class _TranslationSheetState extends State<TranslationSheet>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHighlight.withOpacity(0.3),
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.surfaceHighlight.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.border),
               ),
               child: Column(
                 children: [
@@ -779,19 +783,9 @@ class _TranslationSheetState extends State<TranslationSheet>
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF6C3DE4), Color(0xFF9B59B6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child:
-                  const Icon(Icons.auto_awesome, color: Colors.white, size: 36),
+            const FoxSpriteAnimator(
+              animation: FoxAnimation.yawnSouth,
+              size: 78,
             ),
             const SizedBox(height: 20),
             const Text(
@@ -812,10 +806,9 @@ class _TranslationSheetState extends State<TranslationSheet>
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF6C3DE4).withOpacity(0.08),
-                borderRadius: BorderRadius.circular(12),
-                border:
-                    Border.all(color: const Color(0xFF6C3DE4).withOpacity(0.3)),
+                color: AppColors.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.primary),
               ),
               child: const Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -857,7 +850,7 @@ class _TranslationSheetState extends State<TranslationSheet>
                 label: const Text('Upgrade to Premium'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: const Color(0xFF6C3DE4),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                 ),
               ),
@@ -1008,7 +1001,7 @@ class _PremiumBullet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: const Color(0xFF6C3DE4)),
+        Icon(icon, size: 16, color: AppColors.primary),
         const SizedBox(width: 8),
         Expanded(
           child: Text(

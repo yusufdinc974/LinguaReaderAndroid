@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
 import '../../services/database_service.dart';
 
 class ProfileOnboardingScreen extends StatefulWidget {
@@ -197,7 +198,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(99),
+                  borderRadius: BorderRadius.circular(6),
                   child: LinearProgressIndicator(
                     value: progress,
                     minHeight: 8,
@@ -205,6 +206,11 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
                     valueColor:
                         const AlwaysStoppedAnimation<Color>(AppColors.primary),
                   ),
+                ),
+                const SizedBox(height: 12),
+                const FoxSpriteAnimator(
+                  animation: FoxAnimation.walkWest,
+                  size: 66,
                 ),
                 const SizedBox(height: 18),
                 Expanded(child: _buildStepContent()),
@@ -362,9 +368,9 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.primary.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+            color: AppColors.primary.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.primary, width: 1.5),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -400,13 +406,11 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.primary.withOpacity(0.15)
+              ? AppColors.primary.withOpacity(0.2)
               : Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: selected
-                ? AppColors.primary
-                : Theme.of(context).dividerColor.withOpacity(0.25),
+            color: selected ? AppColors.primary : AppColors.border,
             width: selected ? 2 : 1,
           ),
         ),

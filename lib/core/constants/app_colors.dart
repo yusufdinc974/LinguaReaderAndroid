@@ -1,38 +1,48 @@
 import 'package:flutter/material.dart';
 
 class AppColors {
-  // Primary Palette (Vibrant Blue)
-  static const Color primary = Color(0xFF2563EB); // blue-600
-  static const Color primaryDark = Color(0xFF1D4ED8); // blue-700
-  static const Color primaryLight = Color(0xFF60A5FA); // blue-400
+  // Fox-inspired primary accents.
+  static const Color primary = Color(0xFFDF7B31);
+  static const Color primaryDark = Color(0xFFAF4E1D);
+  static const Color primaryLight = Color(0xFFF2A76A);
   
-  // Secondary Palette (Teal/Emerald)
-  static const Color secondary = Color(0xFF0D9488); // teal-600
-  
-  // Backgrounds (Deep Slate for Dark Mode)
-  static const Color background = Color(0xFF0F172A); // slate-900
-  static const Color surface = Color(0xFF1E293B); // slate-800
-  static const Color surfaceHighlight = Color(0xFF334155); // slate-700
-  
-  // Text Colors
-  static const Color textPrimary = Color(0xFFF8FAFC); // slate-50
-  static const Color textSecondary = Color(0xFF94A3B8); // slate-400
-  static const Color textTertiary = Color(0xFF64748B); // slate-500
+  // Secondary action (Muted Teal to contrast Orange).
+  static const Color secondary = Color(0xFF3D8E86);
+
+  // Dark mode surfaces (Slate / Blue-Grey).
+  static const Color background = Color(0xFF161920);
+  static const Color surface = Color(0xFF1F232D);
+  static const Color surfaceHighlight = Color(0xFF2C3240);
+  static const Color border = Color(0xFF3A4254);
+
+  // Light mode surfaces (Clean Off-White Slate).
+  static const Color lightBackground = Color(0xFFF3F4F7);
+  static const Color lightSurface = Color(0xFFFFFFFF);
+  static const Color lightSurfaceHighlight = Color(0xFFE5E7EB);
+  static const Color lightBorder = Color(0xFFD1D5DB);
+
+  // Text colors.
+  static const Color textPrimary = Color(0xFFF9FAFB);
+  static const Color textSecondary = Color(0xFF9CA3AF);
+  static const Color textTertiary = Color(0xFF6B7280);
+  static const Color lightTextPrimary = Color(0xFF111827);
+  static const Color lightTextSecondary = Color(0xFF374151); // Darkened for contrast
+  static const Color lightTextTertiary = Color(0xFF4B5563);
 
   // Functional Colors
-  static const Color error = Color(0xFFEF4444); // red-500
-  static const Color success = Color(0xFF22C55E); // green-500
-  static const Color warning = Color(0xFFEAB308); // yellow-500
-  
+  static const Color error = Color(0xFFEF4444);
+  static const Color success = Color(0xFF10B981);
+  static const Color warning = Color(0xFFF59E0B);
+
   // Gradients
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [Color(0xFF2563EB), Color(0xFF4F46E5)],
+    colors: [Color(0xFFDF7B31), Color(0xFFCF6422)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
-  
+
   static const LinearGradient surfaceGradient = LinearGradient(
-    colors: [Color(0xFF1E293B), Color(0xFF0F172A)],
+    colors: [Color(0xFF1F232D), Color(0xFF1A1D25)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

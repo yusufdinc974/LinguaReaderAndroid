@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/auth_service.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_card.dart';
 import '../main_screen.dart';
 import 'phone_verify_screen.dart';
 
@@ -44,7 +46,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google sign-in failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Google sign-in failed: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -55,7 +59,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (phone.isEmpty || !phone.startsWith('+')) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter phone with country code (e.g. +905321234567)'),
+          content:
+              Text('Please enter phone with country code (e.g. +905321234567)'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -77,7 +82,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to send OTP: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Failed to send OTP: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -93,20 +100,17 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 24),
-              // Logo / Header
-              Container(
-                width: 88,
-                height: 88,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.auto_stories, color: AppColors.primary, size: 48),
+              const FoxMascotHeader(
+                title: 'LinguaReader',
+                subtitle: 'Your fox guide for daily language reading.',
+                animation: FoxAnimation.walkEast,
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'LinguaReader',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+                style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                      color: AppColors.primaryLight,
+                    ),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -136,16 +140,15 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             onTap: () => setState(() => _showPhoneInput = true),
                           )
                         else ...[
-                          TextField(
-                            controller: _phoneController,
-                            keyboardType: TextInputType.phone,
-                            decoration: InputDecoration(
-                              labelText: 'Phone Number',
-                              hintText: '+905321234567',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(14),
+                          PixelCard(
+                            child: TextField(
+                              controller: _phoneController,
+                              keyboardType: TextInputType.phone,
+                              decoration: const InputDecoration(
+                                labelText: 'Phone Number',
+                                hintText: '+905321234567',
+                                prefixIcon: Icon(Icons.phone),
                               ),
-                              prefixIcon: const Icon(Icons.phone),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -154,12 +157,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                             child: ElevatedButton(
                               onPressed: _sendOTP,
                               style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16),
                               ),
-                              child: const Text('Send Code', style: TextStyle(fontSize: 16)),
+                              child: const Text('Send Code',
+                                  style: TextStyle(fontSize: 16)),
                             ),
                           ),
                         ],
@@ -173,7 +175,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   const Expanded(child: Divider()),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('or', style: TextStyle(color: AppColors.textSecondary)),
+                    child: Text('or',
+                        style: TextStyle(color: AppColors.textSecondary)),
                   ),
                   const Expanded(child: Divider()),
                 ],
@@ -196,7 +199,9 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               Text(
                 'By signing in, you agree to our Terms of Service\nand Privacy Policy.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary.withOpacity(0.6), fontSize: 11),
+                style: TextStyle(
+                    color: AppColors.textSecondary.withOpacity(0.6),
+                    fontSize: 11),
               ),
             ],
           ),
@@ -227,8 +232,6 @@ class _SocialButton extends StatelessWidget {
         label: Text(label, style: const TextStyle(fontSize: 16)),
         style: OutlinedButton.styleFrom(
           padding: const EdgeInsets.symmetric(vertical: 15),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          side: BorderSide(color: AppColors.primary.withOpacity(0.5), width: 1.5),
         ),
       ),
     );

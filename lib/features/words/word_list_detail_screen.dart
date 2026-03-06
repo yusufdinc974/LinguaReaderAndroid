@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
 import '../../services/database_service.dart';
 import '../../services/sync_service.dart';
 
 // Familiarity level colors matching desktop
 const Map<int, Color> levelColors = {
-  1: Color(0xFFef4444), // Red - unknown
-  2: Color(0xFFf97316), // Orange - seen before
-  3: Color(0xFFeab308), // Yellow - learning
-  4: Color(0xFF22c55e), // Green - familiar
-  5: Color(0xFF3b82f6), // Blue - mastered
+  1: AppColors.error,
+  2: AppColors.warning,
+  3: AppColors.secondary,
+  4: AppColors.primary,
+  5: AppColors.success,
 };
 
 class WordListDetailScreen extends StatefulWidget {
@@ -166,14 +167,14 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
   }
 
   Color _parseColor(String? colorStr) {
-    if (colorStr == null) return Colors.blue;
+    if (colorStr == null) return AppColors.primary;
     try {
       if (colorStr.startsWith('0x')) {
         return Color(int.parse(colorStr));
       }
       return Color(int.parse(colorStr));
     } catch (e) {
-      return Colors.blue;
+      return AppColors.primary;
     }
   }
 
@@ -259,7 +260,7 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                   decoration: const BoxDecoration(
                     color: AppColors.surface,
                     borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(20)),
+                        BorderRadius.vertical(top: Radius.circular(10)),
                   ),
                   child: ListView(
                     controller: scrollController,
@@ -270,7 +271,7 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                           width: 40,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: AppColors.textSecondary.withOpacity(0.35),
+                            color: AppColors.surfaceHighlight,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -336,8 +337,9 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                         Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: AppColors.surfaceHighlight.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(10),
+                            color: AppColors.surfaceHighlight.withOpacity(0.45),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.border),
                           ),
                           child: MarkdownBody(
                             data: noteText,
@@ -542,12 +544,11 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(
-                              _searchQuery.isNotEmpty
-                                  ? Icons.search_off
-                                  : Icons.school_outlined,
-                              size: 64,
-                              color: AppColors.textSecondary,
+                            FoxSpriteAnimator(
+                              animation: _searchQuery.isNotEmpty
+                                  ? FoxAnimation.yawnSouth
+                                  : FoxAnimation.idleSouth,
+                              size: 82,
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -572,7 +573,7 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                             key: Key(word['id'].toString()),
                             direction: DismissDirection.endToStart,
                             background: Container(
-                              color: Colors.red,
+                              color: AppColors.error,
                               alignment: Alignment.centerRight,
                               padding: const EdgeInsets.only(right: 20),
                               child:
@@ -632,15 +633,8 @@ class _WordListDetailScreenState extends State<WordListDetailScreen> {
                                   decoration: BoxDecoration(
                                     color:
                                         _getFamiliarityColor(familiarityLevel),
-                                    shape: BoxShape.circle,
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: _getFamiliarityColor(
-                                                familiarityLevel)
-                                            .withOpacity(0.4),
-                                        blurRadius: 4,
-                                      ),
-                                    ],
+                                    borderRadius: BorderRadius.circular(2),
+                                    border: Border.all(color: AppColors.border),
                                   ),
                                 ),
                                 title: Text(
@@ -733,9 +727,9 @@ class _WordMetaChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.35)),
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color, width: 1.5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -3,6 +3,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_card.dart';
 import '../../services/database_service.dart';
 import '../settings/data_management_screen.dart';
 
@@ -188,27 +190,22 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Widget _buildHeroCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F172A), Color(0xFF1D4ED8)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-      ),
+    return PixelCard(
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.insights, color: Colors.white),
+              const FoxSpriteAnimator(
+                animation: FoxAnimation.yawnWest,
+                size: 56,
+              ),
               const SizedBox(width: 8),
               const Text(
                 'Learning Health',
                 style: TextStyle(
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
@@ -216,7 +213,7 @@ class _StatsScreenState extends State<StatsScreen> {
               const Spacer(),
               Text(
                 '${_masteryPercent.round()}% mastered',
-                style: const TextStyle(color: Colors.white70),
+                style: const TextStyle(color: AppColors.textSecondary),
               ),
             ],
           ),
@@ -247,13 +244,13 @@ class _StatsScreenState extends State<StatsScreen> {
           ),
           const SizedBox(height: 14),
           ClipRRect(
-            borderRadius: BorderRadius.circular(99),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: (_masteryPercent / 100).clamp(0.0, 1.0),
               minHeight: 9,
-              backgroundColor: Colors.white24,
+              backgroundColor: AppColors.surfaceHighlight,
               valueColor:
-                  const AlwaysStoppedAnimation<Color>(Colors.tealAccent),
+                  const AlwaysStoppedAnimation<Color>(AppColors.success),
             ),
           ),
         ],
@@ -265,8 +262,9 @@ class _StatsScreenState extends State<StatsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.surfaceHighlight.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +272,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               fontSize: 20,
               fontWeight: FontWeight.bold,
             ),
@@ -282,7 +280,7 @@ class _StatsScreenState extends State<StatsScreen> {
           Text(
             label,
             style: const TextStyle(
-              color: Colors.white70,
+              color: AppColors.textSecondary,
               fontSize: 12,
             ),
           ),
@@ -297,20 +295,18 @@ class _StatsScreenState extends State<StatsScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: hasOverdue
-            ? Colors.red.withOpacity(0.12)
-            : Colors.orange.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(14),
+            ? AppColors.error.withOpacity(0.15)
+            : AppColors.warning.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: hasOverdue
-              ? Colors.red.withOpacity(0.4)
-              : Colors.orange.withOpacity(0.4),
+          color: hasOverdue ? AppColors.error : AppColors.warning,
         ),
       ),
       child: Row(
         children: [
           Icon(
             hasOverdue ? Icons.warning_amber_rounded : Icons.schedule,
-            color: hasOverdue ? Colors.redAccent : Colors.orangeAccent,
+            color: hasOverdue ? AppColors.error : AppColors.warning,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -331,25 +327,25 @@ class _StatsScreenState extends State<StatsScreen> {
       _KpiCardData(
         title: 'Overdue',
         value: '$_overdueCount',
-        color: Colors.redAccent,
+        color: AppColors.error,
         icon: Icons.error_outline,
       ),
       _KpiCardData(
         title: 'Due Today',
         value: '$_dueTodayCount',
-        color: Colors.orangeAccent,
+        color: AppColors.warning,
         icon: Icons.today,
       ),
       _KpiCardData(
         title: 'Due Soon',
         value: '$_dueSoonCount',
-        color: Colors.lightBlueAccent,
+        color: AppColors.primaryLight,
         icon: Icons.upcoming,
       ),
       _KpiCardData(
         title: 'Avg Quiz',
         value: '${_avgQuizAccuracy.round()}%',
-        color: Colors.greenAccent,
+        color: AppColors.success,
         icon: Icons.emoji_events_outlined,
       ),
     ];
@@ -373,8 +369,8 @@ class _StatsScreenState extends State<StatsScreen> {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: data.color.withOpacity(0.35)),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: data.color, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,14 +402,7 @@ class _StatsScreenState extends State<StatsScreen> {
     required String subtitle,
     required Widget child,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border:
-            Border.all(color: Theme.of(context).dividerColor.withOpacity(0.2)),
-      ),
+    return PixelCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -437,9 +426,9 @@ class _StatsScreenState extends State<StatsScreen> {
   Widget _buildMasteryChartWithLegend() {
     final chartData = [
       _ChartSlice('Unknown', _unknownCount, Colors.grey),
-      _ChartSlice('Seen', _seenCount, Colors.orange),
-      _ChartSlice('Learning', _learningCount, Colors.blue),
-      _ChartSlice('Mastered', _masteredCount, Colors.green),
+      _ChartSlice('Seen', _seenCount, AppColors.warning),
+      _ChartSlice('Learning', _learningCount, AppColors.primaryLight),
+      _ChartSlice('Mastered', _masteredCount, AppColors.success),
     ];
 
     final total = chartData.fold<int>(0, (sum, item) => sum + item.value);
@@ -609,11 +598,11 @@ class _StatsScreenState extends State<StatsScreen> {
           spacing: 8,
           runSpacing: 8,
           children: [
-            _buildMiniPill('Overdue $_overdueCount', Colors.redAccent),
-            _buildMiniPill('Today $_dueTodayCount', Colors.orangeAccent),
-            _buildMiniPill('Soon $_dueSoonCount', Colors.lightBlueAccent),
-            _buildMiniPill('Later $_dueLaterCount', Colors.indigoAccent),
-            _buildMiniPill('7+d $_masteredScheduledCount', Colors.greenAccent),
+            _buildMiniPill('Overdue $_overdueCount', AppColors.error),
+            _buildMiniPill('Today $_dueTodayCount', AppColors.warning),
+            _buildMiniPill('Soon $_dueSoonCount', AppColors.primaryLight),
+            _buildMiniPill('Later $_dueLaterCount', AppColors.secondary),
+            _buildMiniPill('7+d $_masteredScheduledCount', AppColors.success),
           ],
         ),
       ],
@@ -757,7 +746,7 @@ class _StatsScreenState extends State<StatsScreen> {
               child: _metricTile(
                 label: 'Total Quizzes',
                 value: '$_totalQuizSessions',
-                color: Colors.indigoAccent,
+                color: AppColors.secondary,
               ),
             ),
             const SizedBox(width: 10),
@@ -765,7 +754,7 @@ class _StatsScreenState extends State<StatsScreen> {
               child: _metricTile(
                 label: 'Best Accuracy',
                 value: '${_bestQuizAccuracy.round()}%',
-                color: Colors.greenAccent,
+                color: AppColors.success,
               ),
             ),
           ],
@@ -777,7 +766,7 @@ class _StatsScreenState extends State<StatsScreen> {
               child: _metricTile(
                 label: 'Average Accuracy',
                 value: '${_avgQuizAccuracy.round()}%',
-                color: Colors.lightBlueAccent,
+                color: AppColors.primaryLight,
               ),
             ),
             const SizedBox(width: 10),
@@ -785,7 +774,7 @@ class _StatsScreenState extends State<StatsScreen> {
               child: _metricTile(
                 label: 'Last Quiz',
                 value: hasLastQuiz ? '$lastAccuracy%' : '-',
-                color: Colors.orangeAccent,
+                color: AppColors.warning,
               ),
             ),
           ],
@@ -795,8 +784,9 @@ class _StatsScreenState extends State<StatsScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: AppColors.surfaceHighlight.withOpacity(0.4),
-            borderRadius: BorderRadius.circular(10),
+            color: AppColors.surfaceHighlight.withOpacity(0.6),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: AppColors.border),
           ),
           child: Text(
             hasLastQuiz
@@ -818,9 +808,9 @@ class _StatsScreenState extends State<StatsScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.4)),
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -850,9 +840,9 @@ class _StatsScreenState extends State<StatsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withOpacity(0.35)),
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color, width: 1.5),
       ),
       child: Text(
         label,
@@ -874,11 +864,11 @@ class _StatsScreenState extends State<StatsScreen> {
   }
 
   Color _scheduleColor(String label) {
-    if (label.startsWith('Overdue')) return Colors.redAccent;
-    if (label.startsWith('Today')) return Colors.orangeAccent;
-    if (label.startsWith('Soon')) return Colors.lightBlueAccent;
-    if (label.startsWith('Later')) return Colors.indigoAccent;
-    return Colors.greenAccent;
+    if (label.startsWith('Overdue')) return AppColors.error;
+    if (label.startsWith('Today')) return AppColors.warning;
+    if (label.startsWith('Soon')) return AppColors.primaryLight;
+    if (label.startsWith('Later')) return AppColors.secondary;
+    return AppColors.success;
   }
 
   String _weekdayLabel(String dateString) {

@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
-import '../../../services/database_service.dart';
-import '../../../core/constants/app_colors.dart';
+import '../../services/database_service.dart';
+import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_card.dart';
 
 class DataManagementScreen extends StatefulWidget {
   const DataManagementScreen({super.key});
@@ -38,13 +40,16 @@ class _DataManagementScreenState extends State<DataManagementScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Export ready. Select an app to save/send.')),
+          const SnackBar(
+              content: Text('Export ready. Select an app to save/send.')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text('Export failed: $e'),
+              backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -82,7 +87,9 @@ class _DataManagementScreenState extends State<DataManagementScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text('Import failed: $e'),
+              backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -99,6 +106,12 @@ class _DataManagementScreenState extends State<DataManagementScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const FoxMascotHeader(
+            title: 'Backup & Restore',
+            subtitle: 'Keep your vocabulary safe across devices.',
+            animation: FoxAnimation.jumpSouth,
+          ),
+          const SizedBox(height: 18),
           // --- Backup Section ---
           const Text(
             'Backup & Restore',
@@ -114,29 +127,39 @@ class _DataManagementScreenState extends State<DataManagementScreen> {
             style: TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
-          
-          ListTile(
-            leading: const Icon(Icons.download, color: AppColors.success),
-            title: const Text('Export Data'),
-            subtitle: const Text('Save backup file'),
-            onTap: _isExporting ? null : _exportData,
-            trailing: _isExporting 
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) 
-                : const Icon(Icons.arrow_forward_ios, size: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            tileColor: AppColors.secondary.withOpacity(0.1),
+
+          PixelCard(
+            color: AppColors.secondary.withOpacity(0.15),
+            child: ListTile(
+              leading: const Icon(Icons.download, color: AppColors.success),
+              title: const Text('Export Data'),
+              subtitle: const Text('Save backup file'),
+              onTap: _isExporting ? null : _exportData,
+              trailing: _isExporting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_forward_ios, size: 16),
+            ),
           ),
           const SizedBox(height: 16),
-          ListTile(
-            leading: const Icon(Icons.upload, color: AppColors.primary),
-            title: const Text('Import Data'),
-            subtitle: const Text('Restore from backup file'),
-            onTap: _isImporting ? null : _importData,
-            trailing: _isImporting 
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) 
-                : const Icon(Icons.arrow_forward_ios, size: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            tileColor: AppColors.secondary.withOpacity(0.1),
+          PixelCard(
+            color: AppColors.secondary.withOpacity(0.15),
+            child: ListTile(
+              leading: const Icon(Icons.upload, color: AppColors.primary),
+              title: const Text('Import Data'),
+              subtitle: const Text('Restore from backup file'),
+              onTap: _isImporting ? null : _importData,
+              trailing: _isImporting
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.arrow_forward_ios, size: 16),
+            ),
           ),
         ],
       ),

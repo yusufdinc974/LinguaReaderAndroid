@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
 import '../main_screen.dart';
 
 class PhoneVerifyScreen extends StatefulWidget {
@@ -48,7 +49,9 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Verification failed: $e'), backgroundColor: Colors.red),
+          SnackBar(
+              content: Text('Verification failed: $e'),
+              backgroundColor: Colors.red),
         );
       }
     }
@@ -65,12 +68,16 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const SizedBox(height: 24),
-              const Icon(Icons.sms_outlined, size: 64, color: AppColors.primary),
+              const FoxSpriteAnimator(
+                animation: FoxAnimation.idleSouth,
+                size: 84,
+              ),
               const SizedBox(height: 24),
               Text(
                 'Code sent to\n${widget.phoneNumber}',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -91,10 +98,11 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
                       border: Border.all(
                         color: _controllers[i].text.isNotEmpty
                             ? AppColors.primary
-                            : AppColors.textSecondary.withOpacity(0.4),
-                        width: 1.5,
+                            : AppColors.border,
+                        width: 2,
                       ),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(6),
+                      color: AppColors.surface,
                     ),
                     child: TextField(
                       controller: _controllers[i],
@@ -102,7 +110,8 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
                       textAlign: TextAlign.center,
                       keyboardType: TextInputType.number,
                       maxLength: 1,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold),
                       decoration: const InputDecoration(
                         border: InputBorder.none,
                         counterText: '',
@@ -134,7 +143,8 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        child: const Text('Verify', style: TextStyle(fontSize: 16)),
+                        child: const Text('Verify',
+                            style: TextStyle(fontSize: 16)),
                       ),
                     ),
               const SizedBox(height: 16),

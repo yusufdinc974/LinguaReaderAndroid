@@ -4,6 +4,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:http/http.dart' as http;
 import '../../services/database_service.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
 
 class QrScanScreen extends StatefulWidget {
   const QrScanScreen({super.key});
@@ -51,19 +52,21 @@ class _QrScanScreenState extends State<QrScanScreen> {
       final String baseUrl = 'http://$ip:$port';
 
       // 1. Handshake ? (Skip for speed, go straight to upload/download)
-      
+
       // 2. Upload Data (Mobile -> Desktop)
       setState(() => _statusMessage = 'Uploading data...');
       final mobileData = await _databaseService.getAllData();
-      
-      final uploadResponse = await http.post(
-        Uri.parse('$baseUrl/sync/upload'),
-        headers: {
-          'Content-Type': 'application/json',
-          'x-auth-pin': pin,
-        },
-        body: jsonEncode(mobileData),
-      ).timeout(const Duration(seconds: 30));
+
+      final uploadResponse = await http
+          .post(
+            Uri.parse('$baseUrl/sync/upload'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-auth-pin': pin,
+            },
+            body: jsonEncode(mobileData),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (uploadResponse.statusCode != 200) {
         throw Exception('Upload failed: ${uploadResponse.body}');
@@ -74,7 +77,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
       final downloadResponse = await http.get(
         Uri.parse('$baseUrl/sync/download'),
         headers: {
-           'x-auth-pin': pin,
+          'x-auth-pin': pin,
         },
       ).timeout(const Duration(seconds: 30));
 
@@ -83,7 +86,7 @@ class _QrScanScreenState extends State<QrScanScreen> {
       }
 
       final desktopData = jsonDecode(downloadResponse.body);
-      
+
       // 4. Import Data
       setState(() => _statusMessage = 'Importing data...');
       await _databaseService.importData(desktopData);
@@ -98,7 +101,6 @@ class _QrScanScreenState extends State<QrScanScreen> {
       // Future.delayed(const Duration(seconds: 2), () {
       //   if (mounted) Navigator.pop(context);
       // });
-
     } catch (e) {
       setState(() {
         _isSyncing = false;
@@ -115,46 +117,51 @@ class _QrScanScreenState extends State<QrScanScreen> {
         children: [
           Expanded(
             flex: 2,
-            child: _isSuccess 
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.check_circle, color: Colors.green, size: 80),
-                      const SizedBox(height: 16),
-                      Text('Sync Successful!', style: Theme.of(context).textTheme.headlineSmall),
-                      const SizedBox(height: 24),
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Done'),
-                      )
-                    ],
-                  ),
-                )
-              : Stack(
-                  children: [
-                    MobileScanner(
-                      controller: _controller,
-                      onDetect: _onDetect,
+            child: _isSuccess
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const FoxSpriteAnimator(
+                          animation: FoxAnimation.jumpSouth,
+                          size: 82,
+                        ),
+                        const SizedBox(height: 16),
+                        Text('Sync Successful!',
+                            style: Theme.of(context).textTheme.headlineSmall),
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Done'),
+                        )
+                      ],
                     ),
-                    // Overlay
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.black54, width: 0),
+                  )
+                : Stack(
+                    children: [
+                      MobileScanner(
+                        controller: _controller,
+                        onDetect: _onDetect,
                       ),
-                      child: Center(
-                        child: Container(
-                          width: 250,
-                          height: 250,
-                          decoration: BoxDecoration(
-                            border: Border.all(color: AppColors.primary, width: 3),
-                            borderRadius: BorderRadius.circular(16),
+                      // Overlay
+                      Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.black54, width: 0),
+                        ),
+                        child: Center(
+                          child: Container(
+                            width: 250,
+                            height: 250,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                  color: AppColors.primary, width: 3),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
           ),
           Expanded(
             flex: 1,
@@ -166,14 +173,17 @@ class _QrScanScreenState extends State<QrScanScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Text(
-                    _statusMessage ?? 'Scan the QR code displayed on your Desktop app',
+                    _statusMessage ??
+                        'Scan the QR code displayed on your Desktop app',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
-                      color: _statusMessage != null && _statusMessage!.startsWith('Error') 
-                          ? AppColors.error 
+                      color: _statusMessage != null &&
+                              _statusMessage!.startsWith('Error')
+                          ? AppColors.error
                           : AppColors.textPrimary,
-                      fontWeight: _isSyncing ? FontWeight.bold : FontWeight.normal,
+                      fontWeight:
+                          _isSyncing ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
                   if (_isSyncing) ...[

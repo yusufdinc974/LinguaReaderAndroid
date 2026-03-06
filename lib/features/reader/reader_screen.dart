@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/fox_sprite.dart';
 import 'widgets/translation_sheet.dart';
 import '../../services/database_service.dart';
 import '../../services/pdf_highlight_service.dart';
@@ -265,10 +266,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
               right: 16,
               bottom: 32,
               child: Card(
-                elevation: 8,
+                elevation: 0,
                 color: Theme.of(context).colorScheme.surface,
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(8),
+                  side: const BorderSide(color: AppColors.border, width: 2),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: _showSelectionActions
@@ -315,6 +318,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
+                            ),
+                            const FoxSpriteAnimator(
+                              animation: FoxAnimation.walkWest,
+                              size: 34,
                             ),
                             const SizedBox(width: 8),
                             ElevatedButton.icon(
