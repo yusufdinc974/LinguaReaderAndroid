@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_text_bubble.dart';
 import '../../services/database_service.dart';
 
 class ProfileOnboardingScreen extends StatefulWidget {
@@ -14,13 +15,29 @@ class ProfileOnboardingScreen extends StatefulWidget {
       _ProfileOnboardingScreenState();
 }
 
-class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
+class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
+    with TickerProviderStateMixin {
   final _databaseService = DatabaseService();
   final _nameController = TextEditingController();
   final _nativeLanguageController = TextEditingController(text: 'Turkish');
 
   int _step = 0;
   bool _isSaving = false;
+  
+  // Exit Animation
+  bool _isPlayingExitAnimation = false;
+  double _exitFoxOffset = 0.0;
+  FoxAnimation _foxAnimation = FoxAnimation.staticIdleSouth;
+
+  // Portal Tracking
+  final GlobalKey _portalKey = GlobalKey();
+  Offset? _portalCenter;
+
+  // Entrance Animation Choreography
+  late AnimationController _entranceAnimController;
+  late Animation<double> _orangeRadiusAnim;
+  late Animation<double> _foxJumpYAnim;
+  late Animation<double> _foxScaleAnim;
 
   String? _selectedGoal;
   String? _selectedDiscovery;
@@ -42,14 +59,112 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
     'Community / Forum',
   ];
 
+  final List<String> _languageOptions = const [
+    'English', 'Spanish', 'French', 'German', 'Italian',
+    'Portuguese', 'Dutch', 'Polish', 'Russian', 'Japanese',
+    'Chinese', 'Turkish',
+  ];
+
   @override
   void initState() {
     super.initState();
     _loadExistingProfile();
+    _setupEntranceAnimation();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _updatePortalCenter();
+    });
+  }
+
+  void _updatePortalCenter() {
+    final RenderBox? renderBox = _portalKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      final size = renderBox.size;
+      final offset = renderBox.localToGlobal(Offset.zero);
+      setState(() {
+        _portalCenter = Offset(offset.dx + size.width / 2, offset.dy + size.height / 2);
+      });
+    }
+  }
+
+  void _setupEntranceAnimation() {
+    _entranceAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 5500),
+    );
+
+    // 0.0 - 0.4: Orange circle shrinks to 50
+    // 0.4 - 0.6: Fox pops out and jumps
+    // 0.6 - 0.7: Portal closes
+    _orangeRadiusAnim = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 2500.0, end: 50.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        weight: 40,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(50.0),
+        weight: 20,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 50.0, end: 0.0).chain(CurveTween(curve: Curves.easeInBack)),
+        weight: 10,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(0.0),
+        weight: 30,
+      ),
+    ]).animate(_entranceAnimController);
+
+    // Fox pops out of portal scale (0.4 - 0.5)
+    _foxScaleAnim = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 40),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutBack)),
+        weight: 10,
+      ),
+      TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 50),
+    ]).animate(_entranceAnimController);
+
+    // Fox jumps UP and lands (0.4 - 0.5)
+    _foxJumpYAnim = TweenSequence<double>([
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 40),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.0, end: -60.0).chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 5,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: -60.0, end: 0.0).chain(CurveTween(curve: Curves.easeInQuad)),
+        weight: 5,
+      ),
+      TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 50),
+    ]).animate(_entranceAnimController);
+
+    _entranceAnimController.addListener(() {
+      final t = _entranceAnimController.value;
+      FoxAnimation anim;
+      
+      if (t < 0.4) {
+        // Fox is hidden
+        anim = FoxAnimation.jumpSouth; 
+      } else if (t >= 0.4 && t < 0.5) {
+        // Fox is jumping out
+        anim = FoxAnimation.jumpSouth; 
+      } else {
+        // Fox arrived and is standing still
+        anim = FoxAnimation.staticIdleSouth; 
+      }
+
+      // Avoid overriding exit animation state
+      if (_foxAnimation != anim && !_isPlayingExitAnimation) {
+        setState(() => _foxAnimation = anim);
+      }
+    });
+
+    _entranceAnimController.forward();
   }
 
   @override
   void dispose() {
+    _entranceAnimController.dispose();
     _nameController.dispose();
     _nativeLanguageController.dispose();
     super.dispose();
@@ -85,6 +200,12 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
       _showToast('Please enter your native language.');
       return;
     }
+    
+    if (_step == 0 && !_isPlayingExitAnimation) {
+      _playFoxRunningSequence();
+      return;
+    }
+
     if (_step == 1 && _selectedGoal == null) {
       _showToast('Choose your main learning goal.');
       return;
@@ -98,6 +219,25 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
       return;
     }
     _finishOnboarding();
+  }
+
+  Future<void> _playFoxRunningSequence() async {
+    setState(() {
+      _isPlayingExitAnimation = true;
+      _foxAnimation = FoxAnimation.jumpEast;
+      _exitFoxOffset = MediaQuery.of(context).size.width; 
+    });
+
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    if (!mounted) return;
+
+    setState(() {
+      _isPlayingExitAnimation = false;
+      _foxAnimation = FoxAnimation.walkWest; 
+      _exitFoxOffset = 0.0;
+      _step += 1;
+    });
   }
 
   void _back() {
@@ -186,57 +326,79 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
 
     return PopScope(
       canPop: !widget.forceCompletion,
-      child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: !widget.forceCompletion,
-          title: const Text('Set Up Your Profile'),
-        ),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 8,
-                    backgroundColor: Theme.of(context).colorScheme.surface,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(AppColors.primary),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const FoxSpriteAnimator(
-                  animation: FoxAnimation.walkWest,
-                  size: 66,
-                ),
-                const SizedBox(height: 18),
-                Expanded(child: _buildStepContent()),
-                const SizedBox(height: 16),
-                Row(
+      child: Stack(
+        children: [
+          Scaffold(
+            appBar: AppBar(
+              automaticallyImplyLeading: !widget.forceCompletion,
+              title: const Text('Set Up Your Profile'),
+            ),
+            body: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: _step == 0 || _isSaving ? null : _back,
-                        child: const Text('Back'),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 8,
+                        backgroundColor: Theme.of(context).colorScheme.surface,
+                        valueColor:
+                            const AlwaysStoppedAnimation<Color>(AppColors.primary),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: ElevatedButton(
-                        onPressed: _isSaving ? null : _next,
-                        child: Text(_step == 3 ? 'Create Profile' : 'Continue'),
+                    const SizedBox(height: 12),
+                    if (_step > 0) ...[
+                      const FoxSpriteAnimator(
+                        animation: FoxAnimation.walkWest,
+                        size: 66,
                       ),
+                      const SizedBox(height: 18),
+                    ],
+                    Expanded(child: _buildStepContent()),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _step == 0 || _isSaving || _isPlayingExitAnimation || _entranceAnimController.value < 0.95 ? null : _back,
+                            child: const Text('Back'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: _isSaving || _isPlayingExitAnimation || _entranceAnimController.value < 0.95 ? null : _next,
+                            child: Text(_step == 3 ? 'Create Profile' : 'Continue'),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
-        ),
+          
+          // Orange Screen Shrinking Reveal Overlay (only on step 0)
+          if (_step == 0)
+             AnimatedBuilder(
+               animation: _entranceAnimController,
+               builder: (context, child) {
+                 if (_entranceAnimController.value >= 0.5) return const SizedBox.shrink();
+                 return CustomPaint(
+                   size: MediaQuery.of(context).size,
+                   painter: _OrangeCirclePainter(
+                     holeRadius: _orangeRadiusAnim.value,
+                     portalCenter: _portalCenter,
+                   ),
+                 );
+               },
+             ),
+        ],
       ),
     );
   }
@@ -257,39 +419,134 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
   Widget _buildIdentityStep() {
     return ListView(
       children: [
-        const Text(
-          'What should we call you?',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Your profile helps us personalize your learning journey.',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        const SizedBox(height: 24),
-        TextField(
-          controller: _nameController,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Name',
-            hintText: 'e.g. Yusuf',
-            prefixIcon: Icon(Icons.person_outline),
+        const SizedBox(height: 20),
+        
+        // Animated Fox Sequence
+        SizedBox(
+          height: 190,
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              // Dummy invisible widget to track precise Fox center at start
+              IgnorePointer(
+                child: Opacity(
+                  opacity: 0.0,
+                  child: Transform.translate(
+                    offset: const Offset(0, 0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const PixelTextBubble(
+                          text: "Hi there! I'm your language fox.\nWhat should I call you?",
+                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          key: _portalKey,
+                          width: 90,
+                          height: 90,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              AnimatedBuilder(
+                animation: _entranceAnimController,
+                builder: (context, child) {
+                  final double x = 0.0;
+                  final double y = _foxJumpYAnim.value;
+                  final double scale = _foxScaleAnim.value;
+                  final double bubbleOpacity = (_entranceAnimController.value > 0.75 && !_isPlayingExitAnimation) ? 1.0 : 0.0;
+
+                  return AnimatedContainer(
+                    duration: _isPlayingExitAnimation ? const Duration(milliseconds: 1000) : Duration.zero,
+                    curve: Curves.easeInCubic,
+                    transform: Matrix4.translationValues(
+                        _isPlayingExitAnimation ? _exitFoxOffset : x, 
+                        _isPlayingExitAnimation ? 0.0 : y, 
+                        0.0),
+                    child: Transform.scale(
+                      scale: scale,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          AnimatedOpacity(
+                            duration: const Duration(milliseconds: 300),
+                            opacity: bubbleOpacity,
+                            child: const PixelTextBubble(
+                              text: "Hi there! I'm Lexi, your language fox.\nWhat should I call you?",
+                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          FoxSpriteAnimator(
+                            animation: _foxAnimation,
+                            size: 90,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _nativeLanguageController,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(
-            labelText: 'Native language',
-            hintText: 'e.g. Turkish',
-            prefixIcon: Icon(Icons.language),
+        
+        const SizedBox(height: 32),
+        AnimatedBuilder(
+          animation: _entranceAnimController,
+          builder: (context, child) {
+            return AnimatedOpacity(
+              duration: const Duration(milliseconds: 500),
+              opacity: _entranceAnimController.value > 0.8 ? 1.0 : 0.0,
+              child: child,
+            );
+          },
+          child: Column(
+            children: [
+              TextField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'e.g. Yusuf',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _languageOptions.any((l) => l.toLowerCase() == _nativeLanguageController.text.trim().toLowerCase())
+                    ? _languageOptions.firstWhere((l) => l.toLowerCase() == _nativeLanguageController.text.trim().toLowerCase())
+                    : 'Turkish',
+                decoration: const InputDecoration(
+                  labelText: 'Native language',
+                  prefixIcon: Icon(Icons.language),
+                ),
+                items: _languageOptions.map((lang) {
+                  return DropdownMenuItem(
+                    value: lang,
+                    child: Text(lang),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    setState(() {
+                      _nativeLanguageController.text = val;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Your native language will be used as initial translation language.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              ),
+            ],
           ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Your native language will be used as initial translation language.',
-          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
         ),
       ],
     );
@@ -435,5 +692,29 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen> {
         ),
       ),
     );
+  }
+}
+
+class _OrangeCirclePainter extends CustomPainter {
+  final double holeRadius;
+  final Offset? portalCenter;
+
+  _OrangeCirclePainter({required this.holeRadius, this.portalCenter});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (holeRadius <= 0) return;
+
+    final paint = Paint()..color = AppColors.primary;
+    // Default fallback while portalCenter is null
+    final center = portalCenter ?? Offset(size.width / 2 - 100, size.height / 2);
+    
+    // Draw an orange circle that acts as the shrinking background.
+    canvas.drawCircle(center, holeRadius, paint);
+  }
+
+  @override
+  bool shouldRepaint(_OrangeCirclePainter oldDelegate) {
+    return oldDelegate.holeRadius != holeRadius || oldDelegate.portalCenter != portalCenter;
   }
 }

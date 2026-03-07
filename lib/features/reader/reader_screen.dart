@@ -8,6 +8,7 @@ import '../../core/widgets/fox_sprite.dart';
 import 'widgets/translation_sheet.dart';
 import '../../services/database_service.dart';
 import '../../services/pdf_highlight_service.dart';
+import '../../core/widgets/streak_animation_overlay.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
@@ -43,12 +44,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
-    final spentMinutes = DateTime.now().difference(_sessionStartedAt).inMinutes;
-    if (spentMinutes > 0) {
-      _databaseService.logLearningActivity(
-        readingMinutesDelta: spentMinutes,
-      );
-    }
     super.dispose();
   }
 
@@ -204,10 +199,34 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reader'),
-        actions: [
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) return;
+        
+        final spentMinutes = DateTime.now().difference(_sessionStartedAt).inMinutes;
+        if (spentMinutes > 0) {
+          try {
+            final bumpedStreak = await _databaseService.logLearningActivity(
+              readingMinutesDelta: spentMinutes,
+            );
+            if (bumpedStreak && mounted) {
+              final streakData = await _databaseService.getLearningStreakStats();
+              if (mounted) {
+                await StreakAnimationOverlay.show(context, newStreak: streakData['current'] ?? 0);
+              }
+            }
+          } catch (_) {}
+        }
+        
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Reader'),
+          actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () async {
@@ -351,7 +370,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
             ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildLargeActionButton({

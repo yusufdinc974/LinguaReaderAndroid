@@ -286,7 +286,7 @@ class DatabaseService {
     }
   }
 
-  Future<void> logLearningActivity({
+  Future<bool> logLearningActivity({
     int wordsLearnedDelta = 0,
     int reviewsCompletedDelta = 0,
     int readingMinutesDelta = 0,
@@ -294,7 +294,7 @@ class DatabaseService {
     if (wordsLearnedDelta == 0 &&
         reviewsCompletedDelta == 0 &&
         readingMinutesDelta == 0) {
-      return;
+      return false;
     }
 
     final db = await database;
@@ -309,6 +309,7 @@ class DatabaseService {
     );
 
     if (existing.isEmpty) {
+      // First activity of the day -> Streak increases!
       await db.insert('learning_activity', {
         'activity_date': day,
         'words_learned': wordsLearnedDelta < 0 ? 0 : wordsLearnedDelta,
@@ -318,7 +319,7 @@ class DatabaseService {
         'created_at': now,
         'updated_at': now,
       });
-      return;
+      return true;
     }
 
     final row = existing.first;
@@ -336,6 +337,9 @@ class DatabaseService {
       where: 'activity_date = ?',
       whereArgs: [day],
     );
+    
+    // Already existed, so streak was already bumped earlier today
+    return false;
   }
 
   Future<Map<String, int>> getTodayLearningActivity() async {

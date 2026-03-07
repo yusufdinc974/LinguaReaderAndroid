@@ -197,11 +197,6 @@ class _StatsScreenState extends State<StatsScreen> {
         children: [
           Row(
             children: [
-              const FoxSpriteAnimator(
-                animation: FoxAnimation.yawnWest,
-                size: 56,
-              ),
-              const SizedBox(width: 8),
               const Text(
                 'Learning Health',
                 style: TextStyle(
@@ -209,6 +204,11 @@ class _StatsScreenState extends State<StatsScreen> {
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
+              ),
+              const SizedBox(width: 8),
+              const FoxSpriteAnimator(
+                animation: FoxAnimation.yawnWest,
+                size: 56,
               ),
               const Spacer(),
               Text(

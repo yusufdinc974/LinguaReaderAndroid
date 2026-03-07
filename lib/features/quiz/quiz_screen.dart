@@ -3,6 +3,7 @@ import 'dart:math';
 import '../../services/database_service.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/streak_animation_overlay.dart';
 
 enum QuizType { flashcard, multipleChoice, reverse }
 
@@ -453,12 +454,23 @@ class _QuizScreenState extends State<QuizScreen>
         totalQuestions: _initialQuizCount,
         quizType: _quizType.name,
       );
-      await _databaseService.logLearningActivity(
+      final bool bumpedStreak = await _databaseService.logLearningActivity(
         reviewsCompletedDelta: _attemptCount,
       );
+      
+      if (bumpedStreak && mounted) {
+        final streakData = await _databaseService.getLearningStreakStats();
+        if (mounted) {
+           await _showStreakAnimationOverlay(streakData['current'] ?? 0);
+        }
+      }
     } catch (_) {
       // Keep quiz UX uninterrupted if persistence fails.
     }
+  }
+
+  Future<void> _showStreakAnimationOverlay(int newStreak) async {
+    await StreakAnimationOverlay.show(context, newStreak: newStreak);
   }
 
   void _resetQuiz() {

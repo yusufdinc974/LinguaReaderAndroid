@@ -9,6 +9,7 @@ import '../settings/settings_screen.dart';
 import '../quiz/quiz_screen.dart';
 import '../subscription/paywall_screen.dart';
 import '../onboarding/profile_onboarding_screen.dart';
+import '../../core/widgets/streak_animation_overlay.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,15 +37,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _bootstrap() async {
     if (_isInitialFlowRunning) return;
     _isInitialFlowRunning = true;
-
-    final profileComplete = await _databaseService.isUserProfileComplete();
-    if (!profileComplete && mounted) {
-      await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-            builder: (_) => const ProfileOnboardingScreen.force()),
-      );
-    }
 
     await _loadData();
     _isInitialFlowRunning = false;
@@ -177,24 +169,30 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                 ),
               ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.primary, width: 1.5),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.local_fire_department,
-                        color: AppColors.warning, size: 18),
-                    const SizedBox(width: 6),
-                    Text(
-                      '$_currentStreak streak',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+              GestureDetector(
+                onTap: () {
+                  final streakApp = _currentStreak;
+                  StreakAnimationOverlay.show(context, newStreak: streakApp);
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.primary, width: 1.5),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.local_fire_department,
+                          color: AppColors.warning, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$_currentStreak streak',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
                 ),
               )
             ],

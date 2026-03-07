@@ -4,6 +4,7 @@ import '../constants/app_colors.dart';
 
 enum FoxAnimation {
   idleSouth,
+  staticIdleSouth,
   walkEast,
   walkWest,
   jumpSouth,
@@ -94,6 +95,8 @@ class _FoxSpriteAnimatorState extends State<FoxSpriteAnimator> {
         return _paths('assets/fox/animations/yawning/west', 11);
       case FoxAnimation.idleSouth:
         return _paths('assets/fox/animations/seated-on-belly-idle/south', 10);
+      case FoxAnimation.staticIdleSouth:
+        return _paths('assets/fox/animations/seated-on-belly-idle/south', 1);
     }
   }
 

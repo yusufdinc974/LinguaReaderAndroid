@@ -3,6 +3,8 @@ import '../../services/auth_service.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
 import '../main_screen.dart';
+import '../onboarding/profile_onboarding_screen.dart';
+import '../../services/database_service.dart';
 
 class PhoneVerifyScreen extends StatefulWidget {
   final String phoneNumber;
@@ -40,10 +42,22 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
     try {
       await _authService.verifyOTP(widget.phoneNumber, _otp);
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-          (route) => false,
-        );
+        final profileComplete = await DatabaseService().isUserProfileComplete();
+        if (mounted) {
+          if (!profileComplete) {
+            await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const ProfileOnboardingScreen.force()),
+            );
+          }
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+              (route) => false,
+            );
+          }
+        }
       }
     } catch (e) {
       if (mounted) {
