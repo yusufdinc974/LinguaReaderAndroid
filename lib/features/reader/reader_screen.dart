@@ -25,7 +25,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
   late final DateTime _sessionStartedAt;
 
   PdfTextSelectionChangedDetails? _selectionDetails;
-  Uint8List? _pdfBytes; // Original PDF bytes (never modified)
+  File? _pdfFile;
+  Uint8List? _pdfBytesCache; // Cache small PDFs only
+  int _pdfFileSizeBytes = 0;
   bool _isLoading = true;
   bool _pdfLoaded = false; // Track if PDF document is loaded in viewer
   Offset? _preservedScrollOffset;
@@ -34,6 +36,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   List<Map<String, dynamic>> _availableLists = [];
   String? _tempSelectedText;
   bool _showSelectionActions = false;
+  bool _isApplyingHighlights = false;
+  bool _didShowLargePdfNotice = false;
+
+  static const int _largePdfThresholdBytes = 25 * 1024 * 1024; // 25 MB
 
   @override
   void initState() {
@@ -47,13 +53,26 @@ class _ReaderScreenState extends State<ReaderScreen> {
     super.dispose();
   }
 
-  /// Load the raw PDF bytes (without any baked highlights)
+  /// Load PDF file metadata and setup reader state
   Future<void> _loadPdf() async {
     setState(() => _isLoading = true);
     try {
-      // 1. Read original file bytes (never modify these)
       final File file = File(widget.filePath);
-      final rawBytes = await file.readAsBytes();
+      final exists = await file.exists();
+      if (!exists) {
+        if (mounted) {
+          setState(() {
+            _pdfFile = null;
+            _pdfFileSizeBytes = 0;
+            _pdfBytesCache = null;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
+
+      _pdfFileSizeBytes = await file.length();
+      _pdfBytesCache = null;
 
       // 2. Fetch available lists for filter
       _availableLists = await _databaseService.getWordLists();
@@ -63,9 +82,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
       if (mounted) {
         setState(() {
-          _pdfBytes = rawBytes;
+          _pdfFile = file;
           _isLoading = false;
           _pdfLoaded = false; // Will be set true when document loads
+          _didShowLargePdfNotice = false;
+          _isApplyingHighlights = false;
         });
       }
     } catch (e) {
@@ -76,10 +97,41 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
+  Future<Uint8List?> _getPdfBytes({bool cacheIfSmall = true}) async {
+    final file = _pdfFile;
+    if (file == null) return null;
+    if (_pdfBytesCache != null) return _pdfBytesCache;
+
+    final bytes = await file.readAsBytes();
+    if (cacheIfSmall && _pdfFileSizeBytes <= _largePdfThresholdBytes) {
+      _pdfBytesCache = bytes;
+    }
+    return bytes;
+  }
+
+  bool get _isLargePdf => _pdfFileSizeBytes >= _largePdfThresholdBytes;
+
+  void _maybeShowLargePdfNotice() {
+    if (!mounted || _didShowLargePdfNotice) return;
+    _didShowLargePdfNotice = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+            'Large PDF detected. Highlights are off by default for performance.'),
+      ),
+    );
+  }
+
   /// Apply highlight overlays based on current filter selection
   /// This uses controller annotations (not baked into PDF bytes)
   Future<void> _applyHighlightOverlays() async {
-    if (_pdfBytes == null || !_pdfLoaded) return;
+    if (!_pdfLoaded || _isApplyingHighlights) return;
+    _isApplyingHighlights = true;
+    final pdfBytes = await _getPdfBytes();
+    if (pdfBytes == null) {
+      _isApplyingHighlights = false;
+      return;
+    }
 
     try {
       // 1. CLEAR all existing overlay annotations first
@@ -121,22 +173,55 @@ class _ReaderScreenState extends State<ReaderScreen> {
         return WordColor(data['word'] as String, color);
       }).toList();
 
-      // 4. Add overlay annotations for each word
+      // 4. Find matches for all words with a single PDF load
+      final matchesByWord = await PdfHighlightService.findTextForWords(
+        pdfBytes,
+        words.map((w) => w.word).toList(),
+      );
+
+      // 5. Add overlay annotations for each word
       for (final wordColor in words) {
-        await _addWordHighlightOverlay(wordColor);
+        final matches = matchesByWord[wordColor.word];
+        if (matches == null || matches.isEmpty) continue;
+
+        // Group matches by page
+        final Map<int, List<MatchedItem>> matchesByPage = {};
+        for (final match in matches) {
+          matchesByPage.putIfAbsent(match.pageIndex, () => []).add(match);
+        }
+
+        for (final entry in matchesByPage.entries) {
+          final pageIndex = entry.key;
+          final pageMatches = entry.value;
+
+          final textLines = pageMatches
+              .map((m) => PdfTextLine(m.bounds, wordColor.word, pageIndex + 1))
+              .toList();
+
+          final annotation =
+              HighlightAnnotation(textBoundsCollection: textLines);
+          annotation.color = wordColor.color;
+          annotation.opacity = 0.4;
+
+          _pdfViewerController.addAnnotation(annotation);
+        }
       }
     } catch (e) {
       debugPrint('Error applying highlight overlays: $e');
+    } finally {
+      _isApplyingHighlights = false;
     }
   }
 
   /// Add highlight overlay for a single word
   Future<void> _addWordHighlightOverlay(WordColor wordColor) async {
-    if (_pdfBytes == null || wordColor.word.trim().isEmpty) return;
+    if (wordColor.word.trim().isEmpty) return;
+    final pdfBytes = await _getPdfBytes(cacheIfSmall: true);
+    if (pdfBytes == null) return;
 
     try {
       final matches =
-          await PdfHighlightService.findText(_pdfBytes!, wordColor.word);
+          await PdfHighlightService.findText(pdfBytes, wordColor.word);
 
       // Group matches by page
       final Map<int, List<MatchedItem>> matchesByPage = {};
@@ -192,7 +277,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       );
     }
 
-    if (_pdfBytes == null) {
+    if (_pdfFile == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Error')),
         body: const Center(child: Text('Failed to load PDF')),
@@ -244,8 +329,8 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
       body: Stack(
         children: [
-          SfPdfViewer.memory(
-            _pdfBytes!,
+          SfPdfViewer.file(
+            _pdfFile!,
             key: ValueKey(widget.filePath), // Stable key based on file path
             controller: _pdfViewerController,
             initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
@@ -255,6 +340,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
             onDocumentLoaded: (PdfDocumentLoadedDetails details) {
               // Document is now ready for annotations
               _pdfLoaded = true;
+              if (_isLargePdf) {
+                _maybeShowLargePdfNotice();
+                return;
+              }
               // Apply initial highlights
               _applyHighlightOverlays();
             },

@@ -3,12 +3,14 @@ import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
 import '../../core/widgets/pixel_text_bubble.dart';
 import '../../services/database_service.dart';
+import '../../services/sync_service.dart';
 
 class ProfileOnboardingScreen extends StatefulWidget {
   final bool forceCompletion;
+  final VoidCallback? onComplete;
 
-  const ProfileOnboardingScreen({super.key}) : forceCompletion = false;
-  const ProfileOnboardingScreen.force({super.key}) : forceCompletion = true;
+  const ProfileOnboardingScreen({super.key, this.onComplete}) : forceCompletion = false;
+  const ProfileOnboardingScreen.force({super.key, this.onComplete}) : forceCompletion = true;
 
   @override
   State<ProfileOnboardingScreen> createState() =>
@@ -268,8 +270,15 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
       );
       await _databaseService.saveSetting('target_language', targetLanguageCode);
 
+      // CRITICAL: Push profile to cloud immediately
+      await SyncService.pushToCloud();
+
       if (!mounted) return;
-      Navigator.of(context).pop(true);
+      if (widget.onComplete != null) {
+        widget.onComplete!();
+      } else {
+        Navigator.of(context).pop(true);
+      }
     } catch (e) {
       if (!mounted) return;
       _showToast('Could not save profile: $e');

@@ -7,7 +7,7 @@ class SubscriptionService {
   // Product identifiers - must match what you create in Play Console
   static const String monthlyId = 'premium_monthly';
   static const String yearlyId = 'premium_yearly';
-  static const String lifetimeId = 'premium_lifetime';
+  static const String lifetimeId = 'premiumlifetime';
 
   // RevenueCat entitlement identifier
   static const String premiumEntitlement = 'premium';

@@ -91,18 +91,46 @@ class PdfHighlightService {
   static Future<List<MatchedItem>> findText(Uint8List pdfBytes, String text) async {
     if (text.trim().isEmpty) return [];
 
+    PdfDocument? document;
     try {
-      final PdfDocument document = PdfDocument(inputBytes: pdfBytes);
+      document = PdfDocument(inputBytes: pdfBytes);
       PdfTextExtractor extractor = PdfTextExtractor(document);
       final matches = extractor.findText([text]);
-      
-      // We don't dispose document here? We should.
-      // But if we dispose, do matches remain valid? MatchedItem contains Rect and index. Should be simple data objects.
-      document.dispose();
       return matches;
     } catch (e) {
       debugPrint('Error finding text: $e');
       return [];
+    } finally {
+      document?.dispose();
+    }
+  }
+
+  /// Finds occurrences for multiple [words] in a single pass over the PDF.
+  /// Returns a map of word -> matches. This avoids reloading the PDF per word.
+  static Future<Map<String, List<MatchedItem>>> findTextForWords(
+      Uint8List pdfBytes, List<String> words) async {
+    final normalized = words.map((w) => w.trim()).where((w) => w.isNotEmpty).toList();
+    if (normalized.isEmpty) return {};
+
+    PdfDocument? document;
+    try {
+      document = PdfDocument(inputBytes: pdfBytes);
+      final PdfTextExtractor extractor = PdfTextExtractor(document);
+      final Map<String, List<MatchedItem>> results = {};
+
+      for (final word in normalized) {
+        final matches = extractor.findText([word]);
+        if (matches.isNotEmpty) {
+          results[word] = matches;
+        }
+      }
+
+      return results;
+    } catch (e) {
+      debugPrint('Error finding text for words: $e');
+      return {};
+    } finally {
+      document?.dispose();
     }
   }
 }

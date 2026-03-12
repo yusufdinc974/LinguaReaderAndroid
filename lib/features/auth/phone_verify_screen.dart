@@ -41,24 +41,10 @@ class _PhoneVerifyScreenState extends State<PhoneVerifyScreen> {
     setState(() => _isLoading = true);
     try {
       await _authService.verifyOTP(widget.phoneNumber, _otp);
-      if (mounted) {
-        final profileComplete = await DatabaseService().isUserProfileComplete();
-        if (mounted) {
-          if (!profileComplete) {
-            await Navigator.push<bool>(
-              context,
-              MaterialPageRoute(
-                  builder: (_) => const ProfileOnboardingScreen.force()),
-            );
-          }
-          if (mounted) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const MainScreen()),
-              (route) => false,
-            );
-          }
-        }
-      }
+      // Success! The _AuthGate in main.dart will notice the new session
+      // and automatically show the Onboarding or Home screen.
+      // We don't even need to stop loading here because this screen 
+      // is about to be disposed/replaced by the AuthGate's rebuild.
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);

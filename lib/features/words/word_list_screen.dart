@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
 import '../../services/database_service.dart';
+import '../../services/subscription_service.dart';
 import '../../services/sync_service.dart';
+import '../subscription/paywall_screen.dart';
 import 'word_list_detail_screen.dart';
 
 class WordListScreen extends StatefulWidget {
@@ -16,6 +18,7 @@ class _WordListScreenState extends State<WordListScreen> {
   final _databaseService = DatabaseService();
   List<Map<String, dynamic>> _wordLists = [];
   bool _isLoading = true;
+  bool _isCreatingList = false;
 
   final List<Color> _availableColors = [
     AppColors.primary,
@@ -47,8 +50,24 @@ class _WordListScreenState extends State<WordListScreen> {
   }
 
   Future<void> _showCreateListDialog() async {
+    final isPremium = await SubscriptionService.isPremium();
+    if (!isPremium && _wordLists.length >= 3) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PaywallScreen()),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Free tier is limited to 3 word lists. Upgrade to Premium for unlimited!')),
+        );
+      }
+      return;
+    }
+
     final TextEditingController nameController = TextEditingController();
     Color selectedColor = _availableColors[0];
+    bool isCreating = false;
 
     return showDialog<void>(
       context: context,
@@ -107,17 +126,65 @@ class _WordListScreenState extends State<WordListScreen> {
               ),
               TextButton(
                 child: const Text('Create'),
-                onPressed: () async {
-                  if (nameController.text.isNotEmpty) {
-                    await _databaseService.createWordList(
-                        nameController.text, "",
-                        color:
-                            "0x${selectedColor.value.toRadixString(16).toUpperCase()}");
-                    await SyncService.pushToCloud();
-                    if (mounted) Navigator.of(context).pop();
-                    _loadLists();
-                  }
-                },
+                onPressed: isCreating
+                    ? null
+                    : () async {
+                        final rawName = nameController.text.trim();
+                        if (rawName.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Please enter a list name.')),
+                          );
+                          return;
+                        }
+
+                        final exists = _wordLists.any((list) {
+                          final existingName =
+                              (list['name'] as String?)?.trim() ?? '';
+                          return existingName.toLowerCase() ==
+                              rawName.toLowerCase();
+                        });
+
+                        if (exists) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content:
+                                    Text('A list with this name already exists.')),
+                          );
+                          return;
+                        }
+
+                        setState(() => isCreating = true);
+                        if (mounted) {
+                          this.setState(() => _isCreatingList = true);
+                        }
+
+                        try {
+                          await _databaseService.createWordList(
+                            rawName,
+                            "",
+                            color:
+                                "0x${selectedColor.value.toRadixString(16).toUpperCase()}",
+                          );
+                          await SyncService.pushToCloud();
+                          if (mounted) Navigator.of(context).pop();
+                          _loadLists();
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                  content: Text('Could not create list: $e')),
+                            );
+                          }
+                        } finally {
+                          if (mounted) {
+                            this.setState(() => _isCreatingList = false);
+                          }
+                          if (context.mounted) {
+                            setState(() => isCreating = false);
+                          }
+                        }
+                      },
               ),
             ],
           );
@@ -192,7 +259,8 @@ class _WordListScreenState extends State<WordListScreen> {
                         const Text("No word lists yet."),
                         const SizedBox(height: 16),
                         ElevatedButton(
-                          onPressed: _showCreateListDialog,
+                          onPressed:
+                              _isCreatingList ? null : _showCreateListDialog,
                           child: const Text("Create First List"),
                         )
                       ],
@@ -253,7 +321,7 @@ class _WordListScreenState extends State<WordListScreen> {
                   ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateListDialog,
+        onPressed: _isCreatingList ? null : _showCreateListDialog,
         child: const Icon(Icons.add),
       ),
     );

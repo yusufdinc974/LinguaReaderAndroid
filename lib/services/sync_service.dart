@@ -86,16 +86,60 @@ class SyncService {
                   })
               .toList();
 
+      final userProfile = (data['userProfile'] as List<Map<String, dynamic>>)
+          .map((row) => <String, dynamic>{
+                'user_id': _userId,
+                'local_id': row['id'],
+                'display_name': row['display_name'],
+                'native_language': row['native_language'],
+                'target_language': row['target_language'],
+                'learning_goal': row['learning_goal'],
+                'discovery_source': row['discovery_source'],
+                'daily_goal_words': row['daily_goal_words'],
+                'onboarding_completed': row['onboarding_completed'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+              })
+          .toList();
+
+      final learningActivity = (data['learningActivity'] as List<Map<String, dynamic>>)
+          .map((row) => <String, dynamic>{
+                'user_id': _userId,
+                'activity_date': row['activity_date'],
+                'words_learned': row['words_learned'],
+                'reviews_completed': row['reviews_completed'],
+                'reading_minutes': row['reading_minutes'],
+                'translations_looked_up': row['translations_looked_up'],
+                'created_at': row['created_at'],
+                'updated_at': row['updated_at'],
+              })
+          .toList();
+
+      final quizResults = (data['quizResults'] as List<Map<String, dynamic>>)
+          .map((row) => <String, dynamic>{
+                'user_id': _userId,
+                'local_id': row['id'],
+                'word_list_local_id': row['word_list_id'],
+                'score': row['score'],
+                'total_questions': row['total_questions'],
+                'quiz_type': row['quiz_type'],
+                'completed_at': row['completed_at'],
+              })
+          .toList();
+
       await _syncTable('word_lists', wordLists);
       await _syncTable('words', words);
       await _syncTable('word_list_items', wordListItems);
       await _syncTable('word_familiarity', wordFamiliarity);
+      await _syncTable('user_profile', userProfile);
+      await _syncTable('learning_activity', learningActivity, onConflict: 'user_id,activity_date');
+      await _syncTable('quiz_results', quizResults);
 
       debugPrint(
-        'SyncService: push complete lists=${wordLists.length} words=${words.length} items=${wordListItems.length} familiarity=${wordFamiliarity.length}',
+        'SyncService: PUSH COMPLETE ✅ profile=${userProfile.length} activity=${learningActivity.length} words=${words.length}',
       );
     } catch (e) {
-      debugPrint('SyncService.pushToCloud error: $e');
+      debugPrint('SyncService.pushToCloud ERROR ❌: $e');
     }
   }
 
@@ -105,14 +149,25 @@ class SyncService {
       debugPrint('SyncService.pullFromCloud skipped: no user');
       return;
     }
+    debugPrint('SyncService: PULLING data from cloud for user $_userId...');
     try {
       final cloudLists = (await _supabase
           .from('word_lists')
           .select()
           .eq('user_id', _userId!)) as List<dynamic>;
 
+      final cloudProfile = (await _supabase
+          .from('user_profile')
+          .select()
+          .eq('user_id', _userId!)) as List<dynamic>;
+
+      debugPrint('SyncService: Cloud data found - lists=${cloudLists.length}, profile=${cloudProfile.length}');
+
       // Only pull if there's cloud data to restore
-      if (cloudLists.isEmpty) return;
+      if (cloudLists.isEmpty && cloudProfile.isEmpty) {
+        debugPrint('SyncService: No cloud data found to restore.');
+        return;
+      }
 
       final cloudWords = (await _supabase
           .from('words')
@@ -126,6 +181,16 @@ class SyncService {
 
       final cloudFamiliarity = (await _supabase
           .from('word_familiarity')
+          .select()
+          .eq('user_id', _userId!)) as List<dynamic>;
+
+      final cloudActivity = (await _supabase
+          .from('learning_activity')
+          .select()
+          .eq('user_id', _userId!)) as List<dynamic>;
+
+      final cloudQuizResults = (await _supabase
+          .from('quiz_results')
           .select()
           .eq('user_id', _userId!)) as List<dynamic>;
 
@@ -197,17 +262,51 @@ class SyncService {
               })
           .toList();
 
+      final remappedProfile = cloudProfile.whereType<Map<String, dynamic>>().map((e) => {
+                'id': e['local_id'],
+                'display_name': e['display_name'],
+                'native_language': e['native_language'],
+                'target_language': e['target_language'],
+                'learning_goal': e['learning_goal'],
+                'discovery_source': e['discovery_source'],
+                'daily_goal_words': e['daily_goal_words'],
+                'onboarding_completed': e['onboarding_completed'],
+                'created_at': e['created_at'],
+                'updated_at': e['updated_at'],
+              }).toList();
+
+       final remappedActivity = cloudActivity.whereType<Map<String, dynamic>>().map((e) => {
+                'activity_date': e['activity_date'],
+                'words_learned': e['words_learned'],
+                'reviews_completed': e['reviews_completed'],
+                'reading_minutes': e['reading_minutes'],
+                'translations_looked_up': e['translations_looked_up'],
+                'created_at': e['created_at'],
+                'updated_at': e['updated_at'],
+              }).toList();
+
+      final remappedQuizResults = cloudQuizResults.whereType<Map<String, dynamic>>().map((e) => {
+                'id': e['local_id'],
+                'word_list_id': e['word_list_local_id'],
+                'score': e['score'],
+                'total_questions': e['total_questions'],
+                'quiz_type': e['quiz_type'],
+                'completed_at': e['completed_at'],
+              }).toList();
+
       await _db.importData({
         'wordLists': remappedLists,
         'words': remappedWords,
         'wordListItems': remappedItems,
         'wordFamiliarity': remappedFamiliarity,
-        'quizResults': [],
+        'userProfile': remappedProfile,
+        'learningActivity': remappedActivity,
+        'quizResults': remappedQuizResults,
         'userSettings': [],
       });
 
       debugPrint(
-        'SyncService: pull complete — restored ${remappedLists.length} lists, ${remappedWords.length} words',
+        'SyncService: pull complete — restored ${remappedLists.length} lists, ${remappedWords.length} words, profile=${remappedProfile.length}',
       );
     } catch (e) {
       debugPrint('SyncService.pullFromCloud error: $e');
@@ -216,17 +315,22 @@ class SyncService {
 
   static Future<void> _syncTable(
     String table,
-    List<Map<String, dynamic>> rows,
-  ) async {
-    final localIds =
-        rows.map((row) => row['local_id']).whereType<int>().toList();
-    await _deleteMissingRows(table, localIds);
+    List<Map<String, dynamic>> rows, {
+    String onConflict = 'user_id,local_id',
+  }) async {
+    // Only delete missing rows if we are syncing by local_id
+    if (onConflict == 'user_id,local_id') {
+      final localIds =
+          rows.map((row) => row['local_id']).whereType<int>().toList();
+      await _deleteMissingRows(table, localIds);
+    }
+    
     if (rows.isEmpty) return;
 
     try {
       await _supabase.from(table).upsert(
             rows,
-            onConflict: 'user_id,local_id',
+            onConflict: onConflict,
           );
     } catch (e) {
       if (table == 'words') {
@@ -236,7 +340,7 @@ class SyncService {
         try {
           await _supabase.from(table).upsert(
                 fallbackRows,
-                onConflict: 'user_id,local_id',
+                onConflict: onConflict,
               );
           debugPrint(
             'SyncService._syncTable(words): synced without note column fallback',

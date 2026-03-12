@@ -7,6 +7,7 @@ import '../../../services/database_service.dart';
 import '../../../services/pdf_highlight_service.dart';
 import '../../../services/gemini_service.dart';
 import '../../../services/sync_service.dart';
+import '../../../services/subscription_service.dart';
 import '../../subscription/paywall_screen.dart';
 
 // Familiarity level colors matching desktop
@@ -75,6 +76,7 @@ class _TranslationSheetState extends State<TranslationSheet>
   List<Map<String, dynamic>> _wordLists = [];
   bool _showCreateListForm = false;
   final _newListNameController = TextEditingController();
+  bool _isCreatingList = false;
   final _noteController = TextEditingController();
 
   // ── Gemini tab state ──
@@ -174,6 +176,25 @@ class _TranslationSheetState extends State<TranslationSheet>
   // ── Translate ──────────────────────────────────────────────────────────────
 
   Future<void> _translate() async {
+    final isPremium = await SubscriptionService.isPremium();
+    if (!isPremium) {
+      final todayActivity = await _databaseService.getTodayLearningActivity();
+      final lookups = todayActivity['translations_looked_up'] ?? 0;
+      if (lookups >= 10) {
+        if (mounted) {
+          setState(() {
+            _translationError = 'Daily limit reached. Unlock Premium for unlimited translations.';
+            _isTranslating = false;
+          });
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PaywallScreen()),
+          );
+        }
+        return;
+      }
+    }
+
     if (mounted) {
       setState(() {
         _isTranslating = true;
@@ -186,6 +207,11 @@ class _TranslationSheetState extends State<TranslationSheet>
         widget.word,
         targetLang: _selectedTargetLanguageCode,
       );
+      
+      if (!isPremium) {
+        await _databaseService.logLearningActivity(translationsLookedUpDelta: 1);
+      }
+
       if (mounted) {
         setState(() {
           _translation = result.translatedText;
@@ -264,16 +290,57 @@ class _TranslationSheetState extends State<TranslationSheet>
   }
 
   Future<void> _createNewList() async {
+    if (_isCreatingList) return;
+    final isPremium = await SubscriptionService.isPremium();
+    if (!isPremium && _wordLists.length >= 3) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PaywallScreen()),
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Free tier is limited to 3 word lists. Upgrade to Premium for unlimited!')),
+        );
+      }
+      return;
+    }
+
     final name = _newListNameController.text.trim();
     if (name.isEmpty) return;
-    await _databaseService.createWordList(name, '');
-    await SyncService.pushToCloud();
-    _newListNameController.clear();
-    await _loadWordLists();
-    if (mounted) {
-      setState(() => _showCreateListForm = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Created list "$name"')));
+
+    final exists = _wordLists.any((list) {
+      final existingName = (list['name'] as String?)?.trim() ?? '';
+      return existingName.toLowerCase() == name.toLowerCase();
+    });
+
+    if (exists) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('A list with this name already exists.')),
+        );
+      }
+      return;
+    }
+
+    if (mounted) setState(() => _isCreatingList = true);
+    try {
+      await _databaseService.createWordList(name, '');
+      await SyncService.pushToCloud();
+      _newListNameController.clear();
+      await _loadWordLists();
+      if (mounted) {
+        setState(() => _showCreateListForm = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Created list "$name"')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not create list: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isCreatingList = false);
     }
   }
 
@@ -678,8 +745,15 @@ class _TranslationSheetState extends State<TranslationSheet>
                           child: const Text('Cancel')),
                       const SizedBox(width: 8),
                       ElevatedButton(
-                          onPressed: _createNewList,
-                          child: const Text('Create')),
+                          onPressed: _isCreatingList ? null : _createNewList,
+                          child: _isCreatingList
+                              ? const SizedBox(
+                                  height: 16,
+                                  width: 16,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                )
+                              : const Text('Create')),
                     ],
                   ),
                 ],

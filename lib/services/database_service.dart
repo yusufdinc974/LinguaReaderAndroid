@@ -12,7 +12,7 @@ class DatabaseService {
   DatabaseService._internal();
 
   Future<Database> get database async {
-    if (_database != null) return _database!;
+    if (_database != null && _database!.isOpen) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
@@ -22,7 +22,7 @@ class DatabaseService {
     String path = join(documentsDirectory.path, 'linguareader.db');
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -135,6 +135,7 @@ class DatabaseService {
         words_learned INTEGER DEFAULT 0,
         reviews_completed INTEGER DEFAULT 0,
         reading_minutes INTEGER DEFAULT 0,
+        translations_looked_up INTEGER DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -217,6 +218,7 @@ class DatabaseService {
           words_learned INTEGER DEFAULT 0,
           reviews_completed INTEGER DEFAULT 0,
           reading_minutes INTEGER DEFAULT 0,
+          translations_looked_up INTEGER DEFAULT 0,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -226,6 +228,13 @@ class DatabaseService {
         CREATE INDEX IF NOT EXISTS idx_word_familiarity_next_review
         ON word_familiarity(next_review_date)
       ''');
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute('ALTER TABLE learning_activity ADD COLUMN translations_looked_up INTEGER DEFAULT 0');
+      } catch (e) {
+        print("Migration error config 5: $e");
+      }
     }
   }
 
@@ -290,10 +299,12 @@ class DatabaseService {
     int wordsLearnedDelta = 0,
     int reviewsCompletedDelta = 0,
     int readingMinutesDelta = 0,
+    int translationsLookedUpDelta = 0,
   }) async {
     if (wordsLearnedDelta == 0 &&
         reviewsCompletedDelta == 0 &&
-        readingMinutesDelta == 0) {
+        readingMinutesDelta == 0 &&
+        translationsLookedUpDelta == 0) {
       return false;
     }
 
@@ -316,6 +327,7 @@ class DatabaseService {
         'reviews_completed':
             reviewsCompletedDelta < 0 ? 0 : reviewsCompletedDelta,
         'reading_minutes': readingMinutesDelta < 0 ? 0 : readingMinutesDelta,
+        'translations_looked_up': translationsLookedUpDelta < 0 ? 0 : translationsLookedUpDelta,
         'created_at': now,
         'updated_at': now,
       });
@@ -332,6 +344,8 @@ class DatabaseService {
             (row['reviews_completed'] as int? ?? 0) + reviewsCompletedDelta,
         'reading_minutes':
             (row['reading_minutes'] as int? ?? 0) + readingMinutesDelta,
+        'translations_looked_up':
+            (row['translations_looked_up'] as int? ?? 0) + translationsLookedUpDelta,
         'updated_at': now,
       },
       where: 'activity_date = ?',
@@ -356,6 +370,7 @@ class DatabaseService {
         'words_learned': 0,
         'reviews_completed': 0,
         'reading_minutes': 0,
+        'translations_looked_up': 0,
       };
     }
     final row = rows.first;
@@ -363,6 +378,7 @@ class DatabaseService {
       'words_learned': row['words_learned'] as int? ?? 0,
       'reviews_completed': row['reviews_completed'] as int? ?? 0,
       'reading_minutes': row['reading_minutes'] as int? ?? 0,
+      'translations_looked_up': row['translations_looked_up'] as int? ?? 0,
     };
   }
 
@@ -477,8 +493,20 @@ class DatabaseService {
   Future<int> createWordList(String name, String description,
       {String? color}) async {
     final db = await database;
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      throw ArgumentError('Word list name cannot be empty');
+    }
+
+    final existing = await db.rawQuery(
+      'SELECT id FROM word_lists WHERE LOWER(TRIM(name)) = ? LIMIT 1',
+      [normalizedName.toLowerCase()],
+    );
+    if (existing.isNotEmpty) {
+      return existing.first['id'] as int;
+    }
     return await db.insert('word_lists', {
-      'name': name,
+      'name': normalizedName,
       'description': description,
       'color': color ?? '0xFF2196F3', // Default Blue
     });
@@ -665,6 +693,12 @@ class DatabaseService {
   Future<List<Map<String, dynamic>>> getRecentPdfs() async {
     final db = await database;
     return await db.query('recent_pdfs', orderBy: 'last_opened DESC', limit: 5);
+  }
+
+  Future<int> getPdfCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM recent_pdfs');
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   Future<void> addRecentPdf(String name, String path) async {

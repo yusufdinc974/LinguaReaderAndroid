@@ -6,6 +6,7 @@ import '../../core/widgets/fox_sprite.dart';
 import '../main_screen.dart';
 import '../onboarding/profile_onboarding_screen.dart';
 import '../../services/database_service.dart';
+import '../../services/sync_service.dart';
 
 class AuthScreen extends ConsumerStatefulWidget {
   const AuthScreen({super.key});
@@ -27,32 +28,32 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           // User cancelled
           setState(() => _isLoading = false);
         } else {
-          // Success, navigate to app
-          final profileComplete = await DatabaseService().isUserProfileComplete();
-          if (mounted) {
-            if (!profileComplete) {
-              await Navigator.push<bool>(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const ProfileOnboardingScreen.force()),
-              );
-            }
-            if (mounted) {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const MainScreen()),
-                (route) => false,
-              );
-            }
-          }
+          // Success! The _AuthGate in main.dart will notice the new session
+          // and automatically show the Onboarding or Home screen.
+          // We just need to stop the loading spinner.
+          if (mounted) setState(() => _isLoading = false);
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
+        
+        String errorMessage = e.toString();
+        if (errorMessage.contains('10:')) {
+          errorMessage = 'Configuration Error (10): Please ensure your SHA-1 fingerprint and Web Client ID are correctly registered in the Google Cloud Console.';
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Google sign-in failed: $e'),
-              backgroundColor: Colors.red),
+              content: Text('Google sign-in failed: $errorMessage'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 10),
+              action: SnackBarAction(
+                label: 'OK',
+                textColor: Colors.white,
+                onPressed: () {},
+              ),
+          ),
         );
       }
     }

@@ -4,7 +4,9 @@ import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
 import '../../core/widgets/pixel_card.dart';
 import '../../services/database_service.dart';
+import '../../services/subscription_service.dart';
 import '../reader/reader_screen.dart';
+import '../subscription/paywall_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
@@ -17,6 +19,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
   final _databaseService = DatabaseService();
 
   Future<void> _pickFile() async {
+    final isPremium = await SubscriptionService.isPremium();
+    if (!isPremium) {
+      final count = await _databaseService.getPdfCount();
+      if (count >= 5) {
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const PaywallScreen()),
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Free tier is limited to 5 PDFs. Upgrade to Premium for unlimited storage!')),
+          );
+        }
+        return;
+      }
+    }
+
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],

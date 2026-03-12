@@ -17,6 +17,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
   bool _isLoading = true;
   bool _isPurchasing = false;
   int _selectedIndex = 1; // Default: Yearly (best value)
+  bool _hasPremium = false;
+  String? _currentProductId;
 
   @override
   void initState() {
@@ -25,12 +27,58 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }
 
   Future<void> _loadOfferings() async {
-    final offerings = await SubscriptionService.getOfferings();
-    if (mounted)
-      setState(() {
-        _offerings = offerings;
-        _isLoading = false;
-      });
+    try {
+      final results = await Future.wait([
+        SubscriptionService.getOfferings(),
+        SubscriptionService.getCustomerInfo(),
+      ]);
+      final offerings = results[0] as Offerings?;
+      final customerInfo = results[1] as CustomerInfo?;
+
+      String? currentProductId;
+      bool hasPremium = false;
+      if (customerInfo != null) {
+        hasPremium = SubscriptionService.hasPremiumEntitlement(customerInfo);
+        final entitlements = customerInfo.entitlements.active;
+        if (entitlements.containsKey(SubscriptionService.premiumEntitlement)) {
+          currentProductId =
+              entitlements[SubscriptionService.premiumEntitlement]
+                  ?.productIdentifier;
+        } else {
+          for (final entry in entitlements.entries) {
+            if (entry.key.toLowerCase() ==
+                SubscriptionService.premiumEntitlement.toLowerCase()) {
+              currentProductId = entry.value.productIdentifier;
+              break;
+            }
+          }
+        }
+      }
+      debugPrint('DEBUG: Offerings fetched: ${offerings?.all.keys}');
+      debugPrint('DEBUG: Current offering: ${offerings?.current?.identifier}');
+      debugPrint('DEBUG: Packages in current: ${offerings?.current?.availablePackages.length}');
+      
+      if (mounted) {
+        setState(() {
+          _offerings = offerings;
+          _hasPremium = hasPremium;
+          _currentProductId = currentProductId;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('DEBUG: Error loading offerings: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  bool _isCurrentPackage(Package pkg) {
+    final productId = pkg.storeProduct.identifier;
+    return _hasPremium &&
+        _currentProductId != null &&
+        productId == _currentProductId;
   }
 
   List<Package> get _packages {
@@ -48,6 +96,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   Future<void> _purchase() async {
     final pkgs = _packages;
     if (pkgs.isEmpty || _selectedIndex >= pkgs.length) return;
+    if (_isCurrentPackage(pkgs[_selectedIndex])) return;
 
     setState(() => _isPurchasing = true);
     try {
@@ -143,12 +192,41 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       style: TextStyle(
                           color: AppColors.textSecondary, fontSize: 15),
                     ),
-                    const SizedBox(height: 32),
-                    _featureRow('Unlimited word lists & vocabulary', true),
-                    _featureRow('Unlimited SRS flashcard reviews', true),
-                    _featureRow('Cloud sync across all devices', true),
-                    _featureRow('Full statistics & quiz history', true),
-                    _featureRow('PDF cloud library storage', true),
+                    const SizedBox(height: 16),
+                    // Feature Comparison
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: _buildPlanCard(
+                            title: 'Free',
+                            isPremium: false,
+                            features: [
+                              _FeatureItem('10 Translations/day', included: false),
+                              _FeatureItem('Max 3 Word Lists', included: false),
+                              _FeatureItem('Max 5 PDF Imports', included: false),
+                              _FeatureItem('Ask Gemini AI', included: false),
+                              _FeatureItem('Cloud Sync', included: true),
+                              _FeatureItem('Unlimited Reviews', included: true),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildPlanCard(
+                            title: 'Premium',
+                            isPremium: true,
+                            features: [
+                              _FeatureItem('Unlimited Translations', included: true),
+                              _FeatureItem('Unlimited Word Lists', included: true),
+                              _FeatureItem('Unlimited PDF Imports', included: true),
+                              _FeatureItem('Ask Gemini AI', included: true),
+                              _FeatureItem('Priority Support', included: true), // Replaced Cloud Sync with a placeholder premium feature
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 32),
                     if (_isLoading)
                       const CircularProgressIndicator(color: AppColors.primary)
@@ -162,6 +240,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
                           final isYearly =
                               pkg.packageType == PackageType.annual;
                           final isSelected = _selectedIndex == i;
+                          final isCurrent = _isCurrentPackage(pkg);
 
                           return GestureDetector(
                             onTap: () => setState(() => _selectedIndex = i),
@@ -199,6 +278,30 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                                   fontSize: 16,
                                                 ),
                                               ),
+                                              if (isCurrent) ...[
+                                                const SizedBox(width: 8),
+                                                Container(
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppColors.success,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            6),
+                                                  ),
+                                                  child: const Text(
+                                                    'CURRENT',
+                                                    style: TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 10,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
                                               if (isYearly) ...[
                                                 const SizedBox(width: 8),
                                                 Container(
@@ -236,14 +339,23 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                         ],
                                       ),
                                     ),
-                                    Text(
-                                      pkg.storeProduct.priceString,
-                                      style: const TextStyle(
-                                        color: AppColors.primaryLight,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 18,
-                                      ),
-                                    ),
+                                    isCurrent
+                                        ? const Text(
+                                            'Current plan',
+                                            style: TextStyle(
+                                              color: AppColors.textSecondary,
+                                              fontWeight: FontWeight.w600,
+                                              fontSize: 13,
+                                            ),
+                                          )
+                                        : Text(
+                                            pkg.storeProduct.priceString,
+                                            style: const TextStyle(
+                                              color: AppColors.primaryLight,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 18,
+                                            ),
+                                          ),
                                   ],
                                 ),
                               ),
@@ -255,11 +367,18 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: _isPurchasing ? null : _purchase,
+                        onPressed: _isPurchasing ||
+                                _packages.isEmpty ||
+                                (_selectedIndex < _packages.length &&
+                                    _isCurrentPackage(
+                                        _packages[_selectedIndex]))
+                            ? null
+                            : _purchase,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 18),
+                          disabledBackgroundColor: AppColors.surfaceHighlight,
                         ),
                         child: _isPurchasing
                             ? const SizedBox(
@@ -267,9 +386,17 @@ class _PaywallScreenState extends State<PaywallScreen> {
                                 width: 20,
                                 child: CircularProgressIndicator(
                                     color: Colors.white, strokeWidth: 2))
-                            : const Text('Unlock Premium',
-                                style: TextStyle(
-                                    fontSize: 17, fontWeight: FontWeight.bold)),
+                            : Text(
+                                _selectedIndex < _packages.length &&
+                                        _isCurrentPackage(
+                                            _packages[_selectedIndex])
+                                    ? 'Current Plan'
+                                    : _hasPremium
+                                        ? 'Change Plan'
+                                        : 'Unlock Premium',
+                                style: const TextStyle(
+                                    fontSize: 17, fontWeight: FontWeight.bold),
+                              ),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -314,7 +441,20 @@ class _PaywallScreenState extends State<PaywallScreen> {
       case PackageType.monthly:
         return 'Billed monthly';
       case PackageType.annual:
-        return 'Billed once a year — save ~58%';
+        // Try to calculate discount dynamically if monthly is available
+        final monthlyPkg = _packages.where((p) => p.packageType == PackageType.monthly).firstOrNull;
+        if (monthlyPkg != null) {
+          final monthlyPrice = monthlyPkg.storeProduct.price;
+          final annualPrice = pkg.storeProduct.price;
+          if (monthlyPrice > 0 && annualPrice > 0) {
+            final expectedAnnualPrice = monthlyPrice * 12;
+            final discount = ((expectedAnnualPrice - annualPrice) / expectedAnnualPrice * 100).round();
+            if (discount > 0) {
+              return 'Billed once a year — save ~$discount%';
+            }
+          }
+        }
+        return 'Billed once a year';
       case PackageType.lifetime:
         return 'One-time purchase, forever';
       default:
@@ -322,22 +462,69 @@ class _PaywallScreenState extends State<PaywallScreen> {
     }
   }
 
-  Widget _featureRow(String text, bool included) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
+  Widget _buildPlanCard({
+    required String title,
+    required bool isPremium,
+    required List<_FeatureItem> features,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isPremium ? AppColors.primary.withOpacity(0.1) : Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isPremium ? AppColors.primary : AppColors.border,
+          width: isPremium ? 2 : 1,
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      child: Column(
         children: [
-          Icon(
-            included ? Icons.check_circle : Icons.cancel,
-            color: included ? AppColors.success : AppColors.error,
-            size: 20,
+          Text(
+            title,
+            style: TextStyle(
+              color: isPremium ? AppColors.primaryLight : AppColors.textSecondary,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          const SizedBox(width: 12),
-          Text(text,
-              style:
-                  const TextStyle(color: AppColors.textPrimary, fontSize: 14)),
+          const SizedBox(height: 12),
+          ...features.map((f) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      isPremium
+                          ? Icons.check_circle_rounded
+                          : (f.included ? Icons.check_circle_rounded : Icons.lock_outline),
+                      color: isPremium
+                          ? AppColors.primaryLight
+                          : (f.included ? AppColors.success : AppColors.textTertiary),
+                      size: 16,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        f.text,
+                        style: TextStyle(
+                          color: isPremium ? AppColors.textPrimary : (f.included ? AppColors.textSecondary : AppColors.textTertiary),
+                          fontSize: 12,
+                          height: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )),
         ],
       ),
     );
   }
+}
+
+class _FeatureItem {
+  final String text;
+  final bool included;
+
+  _FeatureItem(this.text, {required this.included});
 }
