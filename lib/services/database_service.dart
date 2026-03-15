@@ -22,7 +22,7 @@ class DatabaseService {
     String path = join(documentsDirectory.path, 'linguareader.db');
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onConfigure: _onConfigure,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
@@ -146,12 +146,60 @@ class DatabaseService {
       ON word_familiarity(next_review_date)
     ''');
 
-    // Default Settings
+    // AI Language Partner tables
+    await _createAiPartnerTables(db);
+
     // Default Settings
     await db.insert('user_settings', {'key': 'target_language', 'value': 'tr'},
         conflictAlgorithm: ConflictAlgorithm.ignore);
     await db.insert('user_settings', {'key': 'theme', 'value': 'dark'},
         conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> _createAiPartnerTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        language TEXT DEFAULT 'en',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        sender TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS correction_metadata (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message_id INTEGER,
+        session_id INTEGER,
+        original_text TEXT NOT NULL,
+        corrected_text TEXT NOT NULL,
+        explanation TEXT NOT NULL,
+        category TEXT DEFAULT 'grammar',
+        user_note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE SET NULL,
+        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_corrections_created_at ON correction_metadata(created_at)'
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_corrections_category ON correction_metadata(category)'
+    );
   }
 
   // --- Settings ---
@@ -235,6 +283,9 @@ class DatabaseService {
       } catch (e) {
         print("Migration error config 5: $e");
       }
+    }
+    if (oldVersion < 6) {
+      await _createAiPartnerTables(db);
     }
   }
 
@@ -1185,5 +1236,141 @@ class DatabaseService {
         }
       }
     });
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // AI Language Partner – Chat Sessions
+  // ────────────────────────────────────────────────────────────────────────────
+
+  Future<int> createChatSession({String title = 'New Chat', String language = 'en'}) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    return await db.insert('chat_sessions', {
+      'title': title,
+      'language': language,
+      'created_at': now,
+      'updated_at': now,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getChatSessions() async {
+    final db = await database;
+    return await db.query('chat_sessions', orderBy: 'updated_at DESC');
+  }
+
+  Future<void> updateChatSessionTitle(int id, String title) async {
+    final db = await database;
+    await db.update(
+      'chat_sessions',
+      {'title': title, 'updated_at': DateTime.now().toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> deleteChatSession(int id) async {
+    final db = await database;
+    await db.delete('chat_sessions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // AI Language Partner – Chat Messages
+  // ────────────────────────────────────────────────────────────────────────────
+
+  Future<int> addChatMessage({
+    required int sessionId,
+    required String sender,
+    required String content,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    final msgId = await db.insert('chat_messages', {
+      'session_id': sessionId,
+      'sender': sender,
+      'content': content,
+      'timestamp': now,
+    });
+    // Bump session updated_at
+    await db.update(
+      'chat_sessions',
+      {'updated_at': now},
+      where: 'id = ?',
+      whereArgs: [sessionId],
+    );
+    return msgId;
+  }
+
+  Future<List<Map<String, dynamic>>> getChatMessages(int sessionId) async {
+    final db = await database;
+    return await db.query(
+      'chat_messages',
+      where: 'session_id = ?',
+      whereArgs: [sessionId],
+      orderBy: 'timestamp ASC',
+    );
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // AI Language Partner – Corrections
+  // ────────────────────────────────────────────────────────────────────────────
+
+  Future<int> addCorrection({
+    int? messageId,
+    int? sessionId,
+    required String originalText,
+    required String correctedText,
+    required String explanation,
+    String category = 'grammar',
+  }) async {
+    final db = await database;
+    return await db.insert('correction_metadata', {
+      'message_id': messageId,
+      'session_id': sessionId,
+      'original_text': originalText,
+      'corrected_text': correctedText,
+      'explanation': explanation,
+      'category': category,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getCorrections({
+    String? category,
+    String? searchQuery,
+  }) async {
+    final db = await database;
+    String? where;
+    final List<Object?> whereArgs = [];
+
+    if (category != null && category != 'all') {
+      where = 'category = ?';
+      whereArgs.add(category);
+    }
+
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      final q = '%${searchQuery.toLowerCase()}%';
+      final searchWhere =
+          '(LOWER(original_text) LIKE ? OR LOWER(corrected_text) LIKE ? OR LOWER(explanation) LIKE ?)';
+      whereArgs.addAll([q, q, q]);
+      where = where == null ? searchWhere : '$where AND $searchWhere';
+    }
+
+    return await db.query(
+      'correction_metadata',
+      where: where,
+      whereArgs: whereArgs.isEmpty ? null : whereArgs,
+      orderBy: 'created_at DESC',
+    );
+  }
+
+  Future<void> updateCorrectionNote(int id, String note) async {
+    final db = await database;
+    await db
+        .update('correction_metadata', {'user_note': note}, where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> deleteCorrection(int id) async {
+    final db = await database;
+    await db.delete('correction_metadata', where: 'id = ?', whereArgs: [id]);
   }
 }

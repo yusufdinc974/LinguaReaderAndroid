@@ -270,7 +270,7 @@ class SyncService {
                 'learning_goal': e['learning_goal'],
                 'discovery_source': e['discovery_source'],
                 'daily_goal_words': e['daily_goal_words'],
-                'onboarding_completed': e['onboarding_completed'],
+                'onboarding_completed': (e['onboarding_completed'] == true || e['onboarding_completed'] == 1) ? 1 : 0,
                 'created_at': e['created_at'],
                 'updated_at': e['updated_at'],
               }).toList();

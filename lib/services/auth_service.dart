@@ -57,6 +57,14 @@ class AuthService {
 
   // --- Sign Out ---
   Future<void> signOut() async {
+    // Note: This ID must match the 'Web client' in your Google Cloud Console
+    const webClientId = '436499725060-0ldln8g1hp65fqkhg1t2co8g6d6v6io9.apps.googleusercontent.com';
+    try {
+      final googleSignIn = GoogleSignIn(serverClientId: webClientId);
+      await googleSignIn.signOut();
+    } catch (_) {
+      // Ignore errors if they weren't signed in with Google
+    }
     await _supabase.auth.signOut();
   }
 

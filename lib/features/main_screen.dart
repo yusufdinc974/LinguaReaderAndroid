@@ -5,6 +5,7 @@ import 'library/library_screen.dart';
 import 'words/word_list_screen.dart';
 import 'quiz/quiz_screen.dart';
 import 'stats/stats_screen.dart';
+import 'ai_partner/ai_partner_screen.dart';
 
 // Simple state provider for the bottom nav index
 final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
@@ -22,6 +23,7 @@ class MainScreen extends ConsumerWidget {
       const WordListScreen(),
       const QuizScreen(),
       const StatsScreen(),
+      const AiPartnerScreen(),
     ];
 
     return Scaffold(
@@ -57,8 +59,14 @@ class MainScreen extends ConsumerWidget {
             selectedIcon: Icon(Icons.bar_chart),
             label: 'Stats',
           ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            selectedIcon: Icon(Icons.chat_bubble_rounded),
+            label: 'Partner',
+          ),
         ],
       ),
     );
   }
 }
+

@@ -144,8 +144,14 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
     // Listen for auth state changes to re-check profile
     ref.listen(authStateProvider, (previous, next) {
       next.whenData((state) {
-        if (state.event == AuthChangeEvent.signedIn || 
-            state.event == AuthChangeEvent.signedOut) {
+        if (state.event == AuthChangeEvent.signedIn) {
+          final user = state.session?.user;
+          if (user != null) {
+            SubscriptionService.loginUser(user.id);
+          }
+          _checkProfileStatus();
+        } else if (state.event == AuthChangeEvent.signedOut) {
+          SubscriptionService.logoutUser();
           _checkProfileStatus();
         }
       });
