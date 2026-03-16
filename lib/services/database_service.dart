@@ -541,6 +541,12 @@ class DatabaseService {
     return await db.query('word_lists', orderBy: 'created_at DESC');
   }
 
+  Future<int> getWordListCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM word_lists');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
   Future<int> createWordList(String name, String description,
       {String? color}) async {
     final db = await database;
@@ -746,6 +752,18 @@ class DatabaseService {
     return await db.query('recent_pdfs', orderBy: 'last_opened DESC', limit: 5);
   }
 
+  Future<bool> hasRecentPdfPath(String path) async {
+    final db = await database;
+    final rows = await db.query(
+      'recent_pdfs',
+      columns: ['id'],
+      where: 'path = ?',
+      whereArgs: [path],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
   Future<int> getPdfCount() async {
     final db = await database;
     final result = await db.rawQuery('SELECT COUNT(*) as count FROM recent_pdfs');
@@ -762,6 +780,13 @@ class DatabaseService {
           'last_opened': DateTime.now().toIso8601String(),
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<int> getWordListItemCount() async {
+    final db = await database;
+    final result =
+        await db.rawQuery('SELECT COUNT(*) as count FROM word_list_items');
+    return Sqflite.firstIntValue(result) ?? 0;
   }
 
   // --- Stats ---

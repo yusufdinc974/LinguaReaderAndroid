@@ -5,15 +5,22 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/fox_sprite.dart';
+import '../../core/widgets/pixel_text_bubble.dart';
 import 'widgets/translation_sheet.dart';
 import '../../services/database_service.dart';
 import '../../services/pdf_highlight_service.dart';
 import '../../core/widgets/streak_animation_overlay.dart';
+import '../../services/tutorial_service.dart';
 
 class ReaderScreen extends StatefulWidget {
   final String filePath;
+  final bool showTutorial;
 
-  const ReaderScreen({super.key, required this.filePath});
+  const ReaderScreen({
+    super.key,
+    required this.filePath,
+    this.showTutorial = false,
+  });
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -38,6 +45,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _showSelectionActions = false;
   bool _isApplyingHighlights = false;
   bool _didShowLargePdfNotice = false;
+  bool _isSamplePdf = false;
+  bool _showReaderTutorial = false;
+  int _readerTutorialStep = 0;
+  bool _readerTutorialVisible = false;
 
   static const int _largePdfThresholdBytes = 25 * 1024 * 1024; // 25 MB
 
@@ -73,6 +84,13 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
       _pdfFileSizeBytes = await file.length();
       _pdfBytesCache = null;
+      await TutorialService.markSampleOpenedIfMatches(widget.filePath);
+
+      final samplePath = await TutorialService.getSamplePdfPath();
+      final isSamplePdf = widget.filePath == samplePath;
+      final completed = await TutorialService.isReaderTutorialCompleted();
+      final shouldShowTutorial =
+          isSamplePdf && (widget.showTutorial || !completed);
 
       // 2. Fetch available lists for filter
       _availableLists = await _databaseService.getWordLists();
@@ -87,6 +105,12 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _pdfLoaded = false; // Will be set true when document loads
           _didShowLargePdfNotice = false;
           _isApplyingHighlights = false;
+          _isSamplePdf = isSamplePdf;
+          _showReaderTutorial = shouldShowTutorial;
+          _readerTutorialVisible = shouldShowTutorial;
+          if (shouldShowTutorial) {
+            _readerTutorialStep = 0;
+          }
         });
       }
     } catch (e) {
@@ -95,6 +119,31 @@ class _ReaderScreenState extends State<ReaderScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  void _advanceReaderTutorial(int step) {
+    if (!_showReaderTutorial) return;
+    if (step <= _readerTutorialStep) return;
+    setState(() {
+      _readerTutorialStep = step;
+      _readerTutorialVisible = true;
+    });
+  }
+
+  Future<void> _completeReaderTutorial() async {
+    if (!_showReaderTutorial) return;
+    await TutorialService.markReaderTutorialCompleted();
+    if (mounted) {
+      setState(() {
+        _showReaderTutorial = false;
+        _readerTutorialVisible = false;
+      });
+    }
+  }
+
+  void _hideReaderTutorial() {
+    if (!_showReaderTutorial) return;
+    setState(() => _readerTutorialVisible = false);
   }
 
   Future<Uint8List?> _getPdfBytes({bool cacheIfSmall = true}) async {
@@ -365,6 +414,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
                   _tempSelectedText = text;
                   _showSelectionActions = false;
                 });
+                if (_showReaderTutorial && _readerTutorialStep == 0) {
+                  _advanceReaderTutorial(1);
+                }
               }
             },
           ),
@@ -393,6 +445,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                                   final selected = _tempSelectedText?.trim();
                                   if (selected == null || selected.isEmpty) {
                                     return;
+                                  }
+                                  if (_showReaderTutorial &&
+                                      _readerTutorialStep == 2) {
+                                    _advanceReaderTutorial(3);
                                   }
                                   _showTranslation(selected);
                                 },
@@ -435,6 +491,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
                             ElevatedButton.icon(
                               onPressed: () {
                                 setState(() => _showSelectionActions = true);
+                                if (_showReaderTutorial &&
+                                    _readerTutorialStep == 1) {
+                                  _advanceReaderTutorial(2);
+                                }
                               },
                               icon: const Icon(Icons.touch_app, size: 20),
                               label: const Text('Actions'),
@@ -455,6 +515,16 @@ class _ReaderScreenState extends State<ReaderScreen> {
                           ],
                         ),
                 ),
+              ),
+            ),
+          if (_showReaderTutorial && _isSamplePdf && _readerTutorialVisible)
+            Positioned(
+              left: 12,
+              right: 12,
+              top: 12,
+              child: SafeArea(
+                bottom: false,
+                child: _buildReaderTutorialCard(),
               ),
             ),
         ],
@@ -576,6 +646,101 @@ class _ReaderScreenState extends State<ReaderScreen> {
     // If word was saved, add instant highlight overlay
     if (result is WordColor) {
       await _addWordHighlightOverlay(result);
+      if (_showReaderTutorial && _readerTutorialStep >= 3) {
+        await _completeReaderTutorial();
+      }
     }
   }
+
+  Widget _buildReaderTutorialCard() {
+    final steps = [
+      _TutorialStep(
+        imagePath: 'assets/fox_tutorial/casual.png',
+        message: 'Hold on a word to select it.',
+      ),
+      _TutorialStep(
+        imagePath: 'assets/fox_tutorial/shy.png',
+        message: 'Nice! Tap Actions to reveal options.',
+      ),
+      _TutorialStep(
+        imagePath: 'assets/fox_tutorial/joyful.png',
+        message: 'Tap Translate to open the word sheet.',
+      ),
+      _TutorialStep(
+        imagePath: 'assets/fox_tutorial/embarresed.png',
+        message:
+            'Pick a list and hit Save. Please do not judge my diary...',
+      ),
+    ];
+
+    final stepIndex = _readerTutorialStep.clamp(0, steps.length - 1);
+    final step = steps[stepIndex];
+    final stepLabel = 'Step ${stepIndex + 1} of ${steps.length}';
+
+    return Card(
+      color: Theme.of(context).colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: AppColors.border, width: 2),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    stepLabel,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _hideReaderTutorial,
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Hide',
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            PixelTextBubble(
+              text: step.message,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            ),
+            const SizedBox(height: 10),
+            Image.asset(
+              step.imagePath,
+              height: 230,
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _completeReaderTutorial,
+                    child: const Text('Skip Tutorial'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TutorialStep {
+  final String imagePath;
+  final String message;
+
+  const _TutorialStep({
+    required this.imagePath,
+    required this.message,
+  });
 }

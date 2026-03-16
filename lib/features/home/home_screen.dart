@@ -4,12 +4,13 @@ import '../../core/widgets/fox_sprite.dart';
 import '../../core/widgets/pixel_card.dart';
 import '../../services/database_service.dart';
 import '../../services/subscription_service.dart';
+import '../../services/tutorial_service.dart';
 import '../reader/reader_screen.dart';
 import '../settings/settings_screen.dart';
 import '../quiz/quiz_screen.dart';
 import '../subscription/paywall_screen.dart';
-import '../onboarding/profile_onboarding_screen.dart';
 import '../../core/widgets/streak_animation_overlay.dart';
+import '../tutorial/tutorial_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLoading = true;
   bool _isPremium = false;
   bool _isInitialFlowRunning = false;
+  bool _didCheckTutorial = false;
 
   @override
   void initState() {
@@ -39,6 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _isInitialFlowRunning = true;
 
     await _loadData();
+    await _maybeShowTutorial();
     _isInitialFlowRunning = false;
   }
 
@@ -70,6 +73,23 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _maybeShowTutorial() async {
+    if (_didCheckTutorial) return;
+    _didCheckTutorial = true;
+
+    final seen = await TutorialService.isTutorialSeen();
+    if (seen || !mounted) return;
+
+    await TutorialService.ensureSamplePdf();
+    await TutorialService.markTutorialSeen();
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const TutorialScreen()),
+    );
+    await _loadData();
+  }
+
   String get _name {
     final raw = (_profile?['display_name'] as String?)?.trim();
     return (raw == null || raw.isEmpty) ? 'Learner' : raw;
@@ -92,6 +112,15 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('Home'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () {
+              Navigator.of(context)
+                  .push(MaterialPageRoute(builder: (_) => const TutorialScreen()))
+                  .then((_) => _loadData());
+            },
+            tooltip: 'Tutorial',
+          ),
           IconButton(
             icon: Icon(
               _isPremium

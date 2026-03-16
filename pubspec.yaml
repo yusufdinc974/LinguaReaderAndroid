@@ -71,6 +71,8 @@ flutter:
   assets:
     - assets/icon.png
     - assets/pdf_cover_placeholder.png
+    - assets/tutorial_getting_started.pdf
+    - assets/fox_tutorial/
     - assets/fox/
     - assets/fox/rotations/
     - assets/fox/animations/walk-8-frames/east/
