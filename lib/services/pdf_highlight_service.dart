@@ -36,42 +36,36 @@ class PdfHighlightService {
       }
 
       // 2. Add new highlights if any words provided
-      if (words.isNotEmpty) {
-        // Iterate through each word to find and highlight
-        for (final wordColor in words) {
-          if (wordColor.word.trim().isEmpty) continue;
-
-          // Create a text searcher
-          PdfTextExtractor extractor = PdfTextExtractor(document);
-          
-          // Find all occurrences of the word
-          List<MatchedItem> matches = extractor.findText([wordColor.word]);
-
+      final normalized = words.where((w) => w.word.trim().isNotEmpty).toList();
+      if (normalized.isNotEmpty) {
+        final PdfTextExtractor extractor = PdfTextExtractor(document);
+        final matches = extractor.findText(
+          normalized.map((w) => w.word).toList(),
+        );
+        if (matches.isNotEmpty) {
+          final Map<String, WordColor> colorByWord = {
+            for (final w in normalized) w.word: w,
+          };
           for (final match in matches) {
-             // Iterate through matches and add annotation to the specific page
-             int pageIndex = match.pageIndex;
-             PdfPage page = document.pages[pageIndex];
+            final wordColor = colorByWord[match.text];
+            if (wordColor == null) continue;
+            final PdfPage page = document.pages[match.pageIndex];
+            final pdfColor = PdfColor(
+              wordColor.color.red,
+              wordColor.color.green,
+              wordColor.color.blue,
+            );
 
-             final pdfColor = PdfColor(
-               wordColor.color.red, 
-               wordColor.color.green, 
-               wordColor.color.blue,
-             );
+            final PdfTextMarkupAnnotation highlight = PdfTextMarkupAnnotation(
+              match.bounds,
+              wordColor.word,
+              pdfColor,
+            );
 
-             // Create highlight annotation
-             PdfTextMarkupAnnotation highlight = PdfTextMarkupAnnotation(
-               match.bounds,
-               wordColor.word,
-               pdfColor,
-             );
-             
-             highlight.textMarkupAnnotationType = PdfTextMarkupAnnotationType.highlight;
-             
-             // Set opacity to be semi-transparent
-             highlight.opacity = 0.4;
-
-             // Add the annotation to the page
-             page.annotations.add(highlight);
+            highlight.textMarkupAnnotationType =
+                PdfTextMarkupAnnotationType.highlight;
+            highlight.opacity = 0.4;
+            page.annotations.add(highlight);
           }
         }
       }
@@ -117,14 +111,10 @@ class PdfHighlightService {
       document = PdfDocument(inputBytes: pdfBytes);
       final PdfTextExtractor extractor = PdfTextExtractor(document);
       final Map<String, List<MatchedItem>> results = {};
-
-      for (final word in normalized) {
-        final matches = extractor.findText([word]);
-        if (matches.isNotEmpty) {
-          results[word] = matches;
-        }
+      final matches = extractor.findText(normalized);
+      for (final match in matches) {
+        results.putIfAbsent(match.text, () => []).add(match);
       }
-
       return results;
     } catch (e) {
       debugPrint('Error finding text for words: $e');

@@ -45,6 +45,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   bool _showSelectionActions = false;
   bool _isApplyingHighlights = false;
   bool _didShowLargePdfNotice = false;
+  bool _allowLargePdfHighlights = false;
   bool _isSamplePdf = false;
   bool _showReaderTutorial = false;
   int _readerTutorialStep = 0;
@@ -61,6 +62,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    _pdfViewerController.dispose();
     super.dispose();
   }
 
@@ -105,6 +107,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
           _pdfLoaded = false; // Will be set true when document loads
           _didShowLargePdfNotice = false;
           _isApplyingHighlights = false;
+          _allowLargePdfHighlights = false;
           _isSamplePdf = isSamplePdf;
           _showReaderTutorial = shouldShowTutorial;
           _readerTutorialVisible = shouldShowTutorial;
@@ -149,6 +152,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   Future<Uint8List?> _getPdfBytes({bool cacheIfSmall = true}) async {
     final file = _pdfFile;
     if (file == null) return null;
+    if (_isLargePdf && !_allowLargePdfHighlights) return null;
     if (_pdfBytesCache != null) return _pdfBytesCache;
 
     final bytes = await file.readAsBytes();
@@ -166,7 +170,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-            'Large PDF detected. Highlights are off by default for performance.'),
+            'Large PDF detected. Performance mode is enabled (single-page view). Highlights are off by default.'),
       ),
     );
   }
@@ -175,6 +179,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// This uses controller annotations (not baked into PDF bytes)
   Future<void> _applyHighlightOverlays() async {
     if (!_pdfLoaded || _isApplyingHighlights) return;
+    if (_isLargePdf && !_allowLargePdfHighlights) {
+      _maybeShowLargePdfNotice();
+      return;
+    }
     _isApplyingHighlights = true;
     final pdfBytes = await _getPdfBytes();
     if (pdfBytes == null) {
@@ -265,6 +273,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
   /// Add highlight overlay for a single word
   Future<void> _addWordHighlightOverlay(WordColor wordColor) async {
     if (wordColor.word.trim().isEmpty) return;
+    if (_isLargePdf && !_allowLargePdfHighlights) {
+      _maybeShowLargePdfNotice();
+      return;
+    }
     final pdfBytes = await _getPdfBytes(cacheIfSmall: true);
     if (pdfBytes == null) return;
 
@@ -382,8 +394,27 @@ class _ReaderScreenState extends State<ReaderScreen> {
             _pdfFile!,
             key: ValueKey(widget.filePath), // Stable key based on file path
             controller: _pdfViewerController,
+            pageLayoutMode: _isLargePdf
+                ? PdfPageLayoutMode.single
+                : PdfPageLayoutMode.continuous,
+            interactionMode:
+                _isLargePdf ? PdfInteractionMode.pan : PdfInteractionMode.selection,
+            pageSpacing: _isLargePdf ? 0 : 4,
+            canShowScrollHead: !_isLargePdf,
+            canShowScrollStatus: !_isLargePdf,
+            canShowPaginationDialog: !_isLargePdf,
+            canShowSignaturePadDialog: !_isLargePdf,
+            enableDocumentLinkAnnotation: !_isLargePdf,
+            enableHyperlinkNavigation: !_isLargePdf,
+            canShowHyperlinkDialog: !_isLargePdf,
+            enableDoubleTapZooming: !_isLargePdf,
+            useFilePathOnAndroid: true,
+            enableFullTextExtraction: false,
+            maxRenderPixels: _isLargePdf ? 2000000 : 6000000,
+            maxDevicePixelRatio: 2.0,
             initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
             initialZoomLevel: _preservedZoomLevel ?? 1.0,
+            maxZoomLevel: _isLargePdf ? 2 : 3,
             enableTextSelection: true,
             canShowTextSelectionMenu: false,
             onDocumentLoaded: (PdfDocumentLoadedDetails details) {
@@ -548,7 +579,39 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
+  Future<bool> _confirmLargePdfHighlights() async {
+    if (!mounted) return false;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable Highlights?'),
+        content: const Text(
+          'Highlights on large PDFs can be slow and may cause stutter. Do you want to enable them?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Enable'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
   Future<void> _showHighlightFilterDialog() async {
+    if (_isLargePdf && !_allowLargePdfHighlights) {
+      final proceed = await _confirmLargePdfHighlights();
+      if (!proceed) {
+        _maybeShowLargePdfNotice();
+        return;
+      }
+      _allowLargePdfHighlights = true;
+    }
     // Clone current selection to temp set
     final Set<int> tempSelected = _selectedListIds.toSet();
 

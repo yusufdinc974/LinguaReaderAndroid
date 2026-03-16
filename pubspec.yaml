@@ -1,7 +1,7 @@
 name: linguareader
 description: A PDF-based language learning app.
 publish_to: "none"
-version: 1.1.2+11
+version: 1.1.2+12
 
 environment:
   sdk: ">=3.2.0 <4.0.0"
@@ -84,3 +84,9 @@ flutter:
     - assets/fox/animations/jump/south/
     - assets/fox/animations/jump/east/
     - assets/fox/animations/jump/west/
+
+dependency_overrides:
+  syncfusion_flutter_pdfviewer:
+    path: packages/syncfusion_flutter_pdfviewer
+  syncfusion_pdfviewer_platform_interface:
+    path: packages/syncfusion_pdfviewer_platform_interface

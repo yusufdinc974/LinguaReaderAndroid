@@ -1208,10 +1208,9 @@ packages:
   syncfusion_flutter_pdfviewer:
     dependency: "direct main"
     description:
-      name: syncfusion_flutter_pdfviewer
-      sha256: a0d6247c12da730aeeca28a8afb319f0610331be854a8c21ac99574c3c458c50
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/syncfusion_flutter_pdfviewer"
+      relative: true
+    source: path
     version: "32.1.24"
   syncfusion_flutter_signaturepad:
     dependency: transitive
@@ -1238,12 +1237,11 @@ packages:
     source: hosted
     version: "32.1.24"
   syncfusion_pdfviewer_platform_interface:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: syncfusion_pdfviewer_platform_interface
-      sha256: fa450e299d5ae6de58b410a430e010946861ff7f89b844fff8b575fc419197cd
-      url: "https://pub.dev"
-    source: hosted
+      path: "packages/syncfusion_pdfviewer_platform_interface"
+      relative: true
+    source: path
     version: "32.1.24"
   syncfusion_pdfviewer_web:
     dependency: transitive
