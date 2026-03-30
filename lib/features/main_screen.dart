@@ -6,6 +6,7 @@ import 'words/word_list_screen.dart';
 import 'quiz/quiz_screen.dart';
 import 'stats/stats_screen.dart';
 import 'ai_partner/ai_partner_screen.dart';
+import 'music/music_screen.dart';
 
 // Simple state provider for the bottom nav index
 final bottomNavIndexProvider = StateProvider<int>((ref) => 0);
@@ -24,6 +25,7 @@ class MainScreen extends ConsumerWidget {
       const QuizScreen(),
       const StatsScreen(),
       const AiPartnerScreen(),
+      const MusicScreen(),
     ];
 
     return Scaffold(
@@ -63,6 +65,11 @@ class MainScreen extends ConsumerWidget {
             icon: Icon(Icons.chat_bubble_outline_rounded),
             selectedIcon: Icon(Icons.chat_bubble_rounded),
             label: 'Partner',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.music_note_outlined),
+            selectedIcon: Icon(Icons.music_note),
+            label: 'Music',
           ),
         ],
       ),

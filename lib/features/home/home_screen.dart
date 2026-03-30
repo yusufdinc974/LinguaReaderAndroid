@@ -11,6 +11,7 @@ import '../quiz/quiz_screen.dart';
 import '../subscription/paywall_screen.dart';
 import '../../core/widgets/streak_animation_overlay.dart';
 import '../tutorial/tutorial_screen.dart';
+import '../music/music_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -158,6 +159,8 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildHeroCard(),
               const SizedBox(height: 14),
               _buildTodayPlanCard(),
+              const SizedBox(height: 14),
+              _buildMusicCard(),
               const SizedBox(height: 14),
               if (!_isPremium) ...[
                 _buildPremiumBanner(),
@@ -364,6 +367,51 @@ class _HomeScreenState extends State<HomeScreen> {
           Text(
             label,
             style: const TextStyle(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMusicCard() {
+    return PixelCard(
+      color: AppColors.primaryLight.withOpacity(0.15),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.music_note, color: AppColors.primary, size: 28),
+              const SizedBox(width: 10),
+              const Text(
+                'Study with Music',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Search for songs, read lyrics, translate words, and take listening quizzes.',
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const MusicScreen()),
+                );
+              },
+              icon: const Icon(Icons.queue_music),
+              label: const Text('Find a song'),
+            ),
           ),
         ],
       ),

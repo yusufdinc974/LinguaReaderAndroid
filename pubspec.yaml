@@ -52,6 +52,8 @@ dependencies:
   google_fonts: ^8.0.2
   speech_to_text: ^7.3.0
   flutter_tts: ^4.2.5
+  just_audio: ^0.10.5
+  spotify_sdk: ^3.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter

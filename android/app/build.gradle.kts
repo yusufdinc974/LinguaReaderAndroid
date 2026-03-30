@@ -34,6 +34,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["redirectSchemeName"] = "com.yusufdinc.linguareader"
+        manifestPlaceholders["redirectHostName"] = "spotify-auth"
     }
 
     signingConfigs {
