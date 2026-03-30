@@ -457,11 +457,11 @@ class _QuizScreenState extends State<QuizScreen>
       final bool bumpedStreak = await _databaseService.logLearningActivity(
         reviewsCompletedDelta: _attemptCount,
       );
-      
+
       if (bumpedStreak && mounted) {
         final streakData = await _databaseService.getLearningStreakStats();
         if (mounted) {
-           await _showStreakAnimationOverlay(streakData['current'] ?? 0);
+          await _showStreakAnimationOverlay(streakData['current'] ?? 0);
         }
       }
     } catch (_) {

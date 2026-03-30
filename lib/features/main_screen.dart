@@ -69,4 +69,3 @@ class MainScreen extends ConsumerWidget {
     );
   }
 }
-

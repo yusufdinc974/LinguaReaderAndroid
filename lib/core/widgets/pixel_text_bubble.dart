@@ -69,43 +69,74 @@ class PixelBubblePainter extends CustomPainter {
     // We draw a pixelated border by drawing a series of rectangles.
     // Inner background
     canvas.drawRect(
-      Rect.fromLTWH(
-          pixelSize, pixelSize, size.width - 2 * pixelSize, size.height - 2 * pixelSize),
+      Rect.fromLTWH(pixelSize, pixelSize, size.width - 2 * pixelSize,
+          size.height - 2 * pixelSize),
       bgPaint,
     );
 
     // Top border
-    canvas.drawRect(Rect.fromLTWH(pixelSize * 2, 0, size.width - pixelSize * 4, pixelSize), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(pixelSize * 2, 0, size.width - pixelSize * 4, pixelSize),
+        borderPaint);
     // Bottom border
-    canvas.drawRect(Rect.fromLTWH(pixelSize * 2, size.height - pixelSize, size.width - pixelSize * 4, pixelSize), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(pixelSize * 2, size.height - pixelSize,
+            size.width - pixelSize * 4, pixelSize),
+        borderPaint);
     // Left border
-    canvas.drawRect(Rect.fromLTWH(0, pixelSize * 2, pixelSize, size.height - pixelSize * 4), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(0, pixelSize * 2, pixelSize, size.height - pixelSize * 4),
+        borderPaint);
     // Right border
-    canvas.drawRect(Rect.fromLTWH(size.width - pixelSize, pixelSize * 2, pixelSize, size.height - pixelSize * 4), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(size.width - pixelSize, pixelSize * 2, pixelSize,
+            size.height - pixelSize * 4),
+        borderPaint);
 
     // Corners
     // Top-left
-    canvas.drawRect(Rect.fromLTWH(pixelSize, pixelSize, pixelSize, pixelSize), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(pixelSize, pixelSize, pixelSize, pixelSize), borderPaint);
     // Top-right
-    canvas.drawRect(Rect.fromLTWH(size.width - pixelSize * 2, pixelSize, pixelSize, pixelSize), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(
+            size.width - pixelSize * 2, pixelSize, pixelSize, pixelSize),
+        borderPaint);
     // Bottom-left
-    canvas.drawRect(Rect.fromLTWH(pixelSize, size.height - pixelSize * 2, pixelSize, pixelSize), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(
+            pixelSize, size.height - pixelSize * 2, pixelSize, pixelSize),
+        borderPaint);
     // Bottom-right
-    canvas.drawRect(Rect.fromLTWH(size.width - pixelSize * 2, size.height - pixelSize * 2, pixelSize, pixelSize), borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(size.width - pixelSize * 2, size.height - pixelSize * 2,
+            pixelSize, pixelSize),
+        borderPaint);
 
     // Pointing triangle (tail) at the bottom middle
     final tailCenterX = size.width / 2;
-    
-    // Tail border
-    canvas.drawRect(Rect.fromLTWH(tailCenterX - pixelSize * 1.5, size.height, pixelSize * 3, pixelSize), borderPaint);
-    canvas.drawRect(Rect.fromLTWH(tailCenterX - pixelSize * 0.5, size.height + pixelSize, pixelSize, pixelSize), borderPaint);
-    
-    // Fill the hole in the bottom border where the tail attaches
-    canvas.drawRect(Rect.fromLTWH(tailCenterX - pixelSize * 1.5, size.height - pixelSize, pixelSize * 3, pixelSize), bgPaint);
-    
-    // Fill the tail
-    canvas.drawRect(Rect.fromLTWH(tailCenterX - pixelSize * 0.5, size.height, pixelSize, pixelSize), bgPaint);
 
+    // Tail border
+    canvas.drawRect(
+        Rect.fromLTWH(tailCenterX - pixelSize * 1.5, size.height, pixelSize * 3,
+            pixelSize),
+        borderPaint);
+    canvas.drawRect(
+        Rect.fromLTWH(tailCenterX - pixelSize * 0.5, size.height + pixelSize,
+            pixelSize, pixelSize),
+        borderPaint);
+
+    // Fill the hole in the bottom border where the tail attaches
+    canvas.drawRect(
+        Rect.fromLTWH(tailCenterX - pixelSize * 1.5, size.height - pixelSize,
+            pixelSize * 3, pixelSize),
+        bgPaint);
+
+    // Fill the tail
+    canvas.drawRect(
+        Rect.fromLTWH(
+            tailCenterX - pixelSize * 0.5, size.height, pixelSize, pixelSize),
+        bgPaint);
   }
 
   @override

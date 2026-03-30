@@ -56,7 +56,8 @@ class SRSService {
   /// Calculate new Easiness Factor based on quality of response
   static double calculateNewEF(double currentEF, int quality) {
     // Formula: EF' = EF + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02))
-    final newEF = currentEF + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
+    final newEF =
+        currentEF + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02));
     return newEF < 1.3 ? 1.3 : newEF;
   }
 
@@ -75,7 +76,9 @@ class SRSService {
       // Failed recall - reset repetitions, EF slightly decreases or stays same
       newRepetitions = 0;
       newInterval = 1; // Review tomorrow
-      newEF = (currentData.easinessFactor - 0.2 < 1.3) ? 1.3 : currentData.easinessFactor - 0.2;
+      newEF = (currentData.easinessFactor - 0.2 < 1.3)
+          ? 1.3
+          : currentData.easinessFactor - 0.2;
     } else {
       // Successful recall
       newEF = calculateNewEF(currentData.easinessFactor, q);
@@ -94,7 +97,7 @@ class SRSService {
     // Calculate next review date
     final now = DateTime.now();
     final nextReview = now.add(Duration(days: newInterval));
-    
+
     return ReviewResult(
       newEasinessFactor: newEF,
       newInterval: newInterval,

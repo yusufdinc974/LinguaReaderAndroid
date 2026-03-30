@@ -56,8 +56,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
       }
       debugPrint('DEBUG: Offerings fetched: ${offerings?.all.keys}');
       debugPrint('DEBUG: Current offering: ${offerings?.current?.identifier}');
-      debugPrint('DEBUG: Packages in current: ${offerings?.current?.availablePackages.length}');
-      
+      debugPrint(
+          'DEBUG: Packages in current: ${offerings?.current?.availablePackages.length}');
+
       if (mounted) {
         setState(() {
           _offerings = offerings;
@@ -202,9 +203,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
                             title: 'Free',
                             isPremium: false,
                             features: [
-                              _FeatureItem('10 Translations/day', included: false),
+                              _FeatureItem('10 Translations/day',
+                                  included: false),
                               _FeatureItem('Max 3 Word Lists', included: false),
-                              _FeatureItem('Max 5 PDF Imports', included: false),
+                              _FeatureItem('Max 5 PDF Imports',
+                                  included: false),
                               _FeatureItem('Ask Gemini AI', included: false),
                               _FeatureItem('Cloud Sync', included: true),
                               _FeatureItem('Unlimited Reviews', included: true),
@@ -217,11 +220,16 @@ class _PaywallScreenState extends State<PaywallScreen> {
                             title: 'Premium',
                             isPremium: true,
                             features: [
-                              _FeatureItem('Unlimited Translations', included: true),
-                              _FeatureItem('Unlimited Word Lists', included: true),
-                              _FeatureItem('Unlimited PDF Imports', included: true),
+                              _FeatureItem('Unlimited Translations',
+                                  included: true),
+                              _FeatureItem('Unlimited Word Lists',
+                                  included: true),
+                              _FeatureItem('Unlimited PDF Imports',
+                                  included: true),
                               _FeatureItem('Ask Gemini AI', included: true),
-                              _FeatureItem('Priority Support', included: true), // Replaced Cloud Sync with a placeholder premium feature
+                              _FeatureItem('Priority Support',
+                                  included:
+                                      true), // Replaced Cloud Sync with a placeholder premium feature
                             ],
                           ),
                         ),
@@ -442,13 +450,18 @@ class _PaywallScreenState extends State<PaywallScreen> {
         return 'Billed monthly';
       case PackageType.annual:
         // Try to calculate discount dynamically if monthly is available
-        final monthlyPkg = _packages.where((p) => p.packageType == PackageType.monthly).firstOrNull;
+        final monthlyPkg = _packages
+            .where((p) => p.packageType == PackageType.monthly)
+            .firstOrNull;
         if (monthlyPkg != null) {
           final monthlyPrice = monthlyPkg.storeProduct.price;
           final annualPrice = pkg.storeProduct.price;
           if (monthlyPrice > 0 && annualPrice > 0) {
             final expectedAnnualPrice = monthlyPrice * 12;
-            final discount = ((expectedAnnualPrice - annualPrice) / expectedAnnualPrice * 100).round();
+            final discount = ((expectedAnnualPrice - annualPrice) /
+                    expectedAnnualPrice *
+                    100)
+                .round();
             if (discount > 0) {
               return 'Billed once a year — save ~$discount%';
             }
@@ -469,7 +482,9 @@ class _PaywallScreenState extends State<PaywallScreen> {
   }) {
     return Container(
       decoration: BoxDecoration(
-        color: isPremium ? AppColors.primary.withOpacity(0.1) : Theme.of(context).colorScheme.surface,
+        color: isPremium
+            ? AppColors.primary.withOpacity(0.1)
+            : Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isPremium ? AppColors.primary : AppColors.border,
@@ -482,7 +497,8 @@ class _PaywallScreenState extends State<PaywallScreen> {
           Text(
             title,
             style: TextStyle(
-              color: isPremium ? AppColors.primaryLight : AppColors.textSecondary,
+              color:
+                  isPremium ? AppColors.primaryLight : AppColors.textSecondary,
               fontSize: 16,
               fontWeight: FontWeight.bold,
             ),
@@ -496,10 +512,14 @@ class _PaywallScreenState extends State<PaywallScreen> {
                     Icon(
                       isPremium
                           ? Icons.check_circle_rounded
-                          : (f.included ? Icons.check_circle_rounded : Icons.lock_outline),
+                          : (f.included
+                              ? Icons.check_circle_rounded
+                              : Icons.lock_outline),
                       color: isPremium
                           ? AppColors.primaryLight
-                          : (f.included ? AppColors.success : AppColors.textTertiary),
+                          : (f.included
+                              ? AppColors.success
+                              : AppColors.textTertiary),
                       size: 16,
                     ),
                     const SizedBox(width: 6),
@@ -507,7 +527,11 @@ class _PaywallScreenState extends State<PaywallScreen> {
                       child: Text(
                         f.text,
                         style: TextStyle(
-                          color: isPremium ? AppColors.textPrimary : (f.included ? AppColors.textSecondary : AppColors.textTertiary),
+                          color: isPremium
+                              ? AppColors.textPrimary
+                              : (f.included
+                                  ? AppColors.textSecondary
+                                  : AppColors.textTertiary),
                           fontSize: 12,
                           height: 1.2,
                         ),

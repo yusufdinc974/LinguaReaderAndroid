@@ -183,7 +183,8 @@ class _TranslationSheetState extends State<TranslationSheet>
       if (lookups >= 10) {
         if (mounted) {
           setState(() {
-            _translationError = 'Daily limit reached. Unlock Premium for unlimited translations.';
+            _translationError =
+                'Daily limit reached. Unlock Premium for unlimited translations.';
             _isTranslating = false;
           });
           Navigator.push(
@@ -207,9 +208,10 @@ class _TranslationSheetState extends State<TranslationSheet>
         widget.word,
         targetLang: _selectedTargetLanguageCode,
       );
-      
+
       if (!isPremium) {
-        await _databaseService.logLearningActivity(translationsLookedUpDelta: 1);
+        await _databaseService.logLearningActivity(
+            translationsLookedUpDelta: 1);
       }
 
       if (mounted) {
@@ -299,7 +301,9 @@ class _TranslationSheetState extends State<TranslationSheet>
           MaterialPageRoute(builder: (_) => const PaywallScreen()),
         );
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Free tier is limited to 3 word lists. Upgrade to Premium for unlimited!')),
+          const SnackBar(
+              content: Text(
+                  'Free tier is limited to 3 word lists. Upgrade to Premium for unlimited!')),
         );
       }
       return;
@@ -750,8 +754,8 @@ class _TranslationSheetState extends State<TranslationSheet>
                               ? const SizedBox(
                                   height: 16,
                                   width: 16,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2),
+                                  child:
+                                      CircularProgressIndicator(strokeWidth: 2),
                                 )
                               : const Text('Create')),
                     ],

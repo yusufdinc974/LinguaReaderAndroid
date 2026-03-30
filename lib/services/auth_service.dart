@@ -12,8 +12,9 @@ class AuthService {
   // --- Google Sign-In ---
   Future<AuthResponse?> signInWithGoogle() async {
     // Note: This ID must match the 'Web client' in your Google Cloud Console
-    const webClientId = '436499725060-0ldln8g1hp65fqkhg1t2co8g6d6v6io9.apps.googleusercontent.com';
-    
+    const webClientId =
+        '436499725060-0ldln8g1hp65fqkhg1t2co8g6d6v6io9.apps.googleusercontent.com';
+
     try {
       final googleSignIn = GoogleSignIn(serverClientId: webClientId);
       final googleUser = await googleSignIn.signIn();
@@ -35,7 +36,8 @@ class AuthService {
     } catch (e) {
       print('DEBUG: Google Sign-In Error: $e');
       if (e.toString().contains('10:')) {
-        print('DEBUG: This is a Developer Error (10). Check your SHA-1 and Web Client ID.');
+        print(
+            'DEBUG: This is a Developer Error (10). Check your SHA-1 and Web Client ID.');
       }
       rethrow;
     }
@@ -58,7 +60,8 @@ class AuthService {
   // --- Sign Out ---
   Future<void> signOut() async {
     // Note: This ID must match the 'Web client' in your Google Cloud Console
-    const webClientId = '436499725060-0ldln8g1hp65fqkhg1t2co8g6d6v6io9.apps.googleusercontent.com';
+    const webClientId =
+        '436499725060-0ldln8g1hp65fqkhg1t2co8g6d6v6io9.apps.googleusercontent.com';
     try {
       final googleSignIn = GoogleSignIn(serverClientId: webClientId);
       await googleSignIn.signOut();

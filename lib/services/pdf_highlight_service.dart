@@ -11,7 +11,8 @@ class WordColor {
 
 class PdfHighlightService {
   /// Highlights the given [words] in the [pdfBytes] and returns the modified PDF bytes.
-  static Future<Uint8List> highlightWords(Uint8List pdfBytes, List<WordColor> words) async {
+  static Future<Uint8List> highlightWords(
+      Uint8List pdfBytes, List<WordColor> words) async {
     try {
       // 1. Load the PDF document
       final PdfDocument document = PdfDocument(inputBytes: pdfBytes);
@@ -20,16 +21,17 @@ class PdfHighlightService {
       for (int i = 0; i < document.pages.count; i++) {
         final PdfPage page = document.pages[i];
         final annotationsToRemove = <PdfAnnotation>[];
-        
+
         for (int j = 0; j < page.annotations.count; j++) {
           final annotation = page.annotations[j];
           // Check if it's a highlight annotation
-          if (annotation is PdfTextMarkupAnnotation && 
-              annotation.textMarkupAnnotationType == PdfTextMarkupAnnotationType.highlight) {
+          if (annotation is PdfTextMarkupAnnotation &&
+              annotation.textMarkupAnnotationType ==
+                  PdfTextMarkupAnnotationType.highlight) {
             annotationsToRemove.add(annotation);
           }
         }
-        
+
         for (final annotation in annotationsToRemove) {
           page.annotations.remove(annotation);
         }
@@ -82,7 +84,8 @@ class PdfHighlightService {
   }
 
   /// Finds all occurrences of [text] in the [pdfBytes].
-  static Future<List<MatchedItem>> findText(Uint8List pdfBytes, String text) async {
+  static Future<List<MatchedItem>> findText(
+      Uint8List pdfBytes, String text) async {
     if (text.trim().isEmpty) return [];
 
     PdfDocument? document;
@@ -103,7 +106,8 @@ class PdfHighlightService {
   /// Returns a map of word -> matches. This avoids reloading the PDF per word.
   static Future<Map<String, List<MatchedItem>>> findTextForWords(
       Uint8List pdfBytes, List<String> words) async {
-    final normalized = words.map((w) => w.trim()).where((w) => w.isNotEmpty).toList();
+    final normalized =
+        words.map((w) => w.trim()).where((w) => w.isNotEmpty).toList();
     if (normalized.isEmpty) return {};
 
     PdfDocument? document;

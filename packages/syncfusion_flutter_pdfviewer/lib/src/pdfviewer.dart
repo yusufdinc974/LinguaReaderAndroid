@@ -2351,12 +2351,13 @@ class SfPdfViewerState extends State<SfPdfViewer> with WidgetsBindingObserver {
           _isAndroid &&
           widget.useFilePathOnAndroid &&
           widget._source is FilePDFSource;
-      final int pageCount = useFilePathInit
-          ? await _plugin.initializePdfRendererFromFilePath(
-              (widget._source as FilePDFSource).path,
-              _password,
-            )
-          : await _plugin.initializePdfRenderer(rendererBytes, _password);
+      final int pageCount =
+          useFilePathInit
+              ? await _plugin.initializePdfRendererFromFilePath(
+                (widget._source as FilePDFSource).path,
+                _password,
+              )
+              : await _plugin.initializePdfRenderer(rendererBytes, _password);
       _pdfViewerController._pageCount = pageCount;
       if (pageCount > 0) {
         _pdfViewerController._pageNumber = 1;

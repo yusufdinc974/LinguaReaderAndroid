@@ -108,12 +108,10 @@ class PartnerSession {
         id: map['id'] as int?,
         title: map['title'] as String,
         language: map['language'] as String? ?? 'en',
-        createdAt:
-            DateTime.tryParse(map['created_at'] as String? ?? '') ??
-                DateTime.now(),
-        updatedAt:
-            DateTime.tryParse(map['updated_at'] as String? ?? '') ??
-                DateTime.now(),
+        createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ??
+            DateTime.now(),
+        updatedAt: DateTime.tryParse(map['updated_at'] as String? ?? '') ??
+            DateTime.now(),
       );
 }
 
@@ -148,7 +146,8 @@ class AiPartnerService {
 
   static const String _apiKey = String.fromEnvironment(
     'GEMINI_API_KEY',
-    defaultValue: 'AIzaSyAUnguxe4YV8cgetipYmct2CWIt6Rf8Mlo', // User's provided key as fallback
+    defaultValue:
+        'AIzaSyAUnguxe4YV8cgetipYmct2CWIt6Rf8Mlo', // User's provided key as fallback
   );
 
   static const String _modelName = 'gemini-2.5-flash';
@@ -160,7 +159,8 @@ class AiPartnerService {
     return genai.GenerativeModel(
       model: _modelName,
       apiKey: _apiKey,
-      systemInstruction: genai.Content.system(_systemPrompt(explanationLanguage)),
+      systemInstruction:
+          genai.Content.system(_systemPrompt(explanationLanguage)),
       generationConfig: genai.GenerationConfig(
         temperature: 0.8,
         maxOutputTokens: 1024,
@@ -171,6 +171,9 @@ class AiPartnerService {
   String _systemPrompt(String explanationLanguage) => '''
 You are a friendly, encouraging AI language learning partner.
 Converse naturally in whatever language the user uses.
+
+If the user makes a mistake in grammar, spelling, or phrasing, you MUST playfully roast them for it in your conversational reply. Ensure it's friendly but a clear roast.
+You must also constantly maintain the chat by asking the user a follow-up question about the spoken topic to keep the conversation going.
 
 CRITICAL INSTRUCTION: You are STRICTLY a language learning assistant. 
 If the user asks you to write code, solve math problems, answer historical trivia, or do anything unrelated to language learning, YOU MUST REFUSE politely. 
@@ -192,7 +195,7 @@ Category: <grammar or spelling or naturalness>
 
 If the user's message is perfectly fine, do NOT include the correction block.
 Keep your conversational reply separate from the correction block.
-Be warm, encouraging, and conversational. Limit replies to ~3 sentences unless asked for more.
+Limit conversational replies to ~3 sentences unless asked for more.
 ''';
 
   _GeminiSession _getSession(int sessionId, String explanationLanguage) {
@@ -204,18 +207,20 @@ Be warm, encouraging, and conversational. Limit replies to ~3 sentences unless a
 
   void clearSession(int sessionId) => _sessionCache.remove(sessionId);
 
-  void loadHistory(int sessionId, List<ChatMessage> messages, String explanationLanguage) {
+  void loadHistory(
+      int sessionId, List<ChatMessage> messages, String explanationLanguage) {
     final history = messages.map((m) {
       return genai.Content(
         m.isUser ? 'user' : 'model',
         [genai.TextPart(m.content)],
       );
     }).toList();
-    _sessionCache[sessionId] =
-        _GeminiSession(chat: _buildModel(explanationLanguage).startChat(history: history));
+    _sessionCache[sessionId] = _GeminiSession(
+        chat: _buildModel(explanationLanguage).startChat(history: history));
   }
 
-  Future<AiPartnerResult> sendMessage(int sessionId, String userMessage, {String explanationLanguage = 'English'}) async {
+  Future<AiPartnerResult> sendMessage(int sessionId, String userMessage,
+      {String explanationLanguage = 'English'}) async {
     if (_apiKey.isEmpty) {
       throw Exception(
         'GEMINI_API_KEY is not configured. '
@@ -259,7 +264,10 @@ Be warm, encouraging, and conversational. Limit replies to ~3 sentences unless a
         }
       }
 
-      if (original != null && original.isNotEmpty && corrected != null && corrected.isNotEmpty) {
+      if (original != null &&
+          original.isNotEmpty &&
+          corrected != null &&
+          corrected.isNotEmpty) {
         correction = CorrectionData(
           original: original,
           corrected: corrected,

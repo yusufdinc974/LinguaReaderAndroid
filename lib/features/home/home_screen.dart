@@ -116,7 +116,8 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.help_outline),
             onPressed: () {
               Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => const TutorialScreen()))
+                  .push(
+                      MaterialPageRoute(builder: (_) => const TutorialScreen()))
                   .then((_) => _loadData());
             },
             tooltip: 'Tutorial',
@@ -368,8 +369,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-
-
 
   Widget _buildPremiumBanner() {
     return PixelCard(

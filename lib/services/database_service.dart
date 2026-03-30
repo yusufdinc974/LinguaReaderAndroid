@@ -195,11 +195,9 @@ class DatabaseService {
     ''');
 
     await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_corrections_created_at ON correction_metadata(created_at)'
-    );
+        'CREATE INDEX IF NOT EXISTS idx_corrections_created_at ON correction_metadata(created_at)');
     await db.execute(
-      'CREATE INDEX IF NOT EXISTS idx_corrections_category ON correction_metadata(category)'
-    );
+        'CREATE INDEX IF NOT EXISTS idx_corrections_category ON correction_metadata(category)');
   }
 
   // --- Settings ---
@@ -279,7 +277,8 @@ class DatabaseService {
     }
     if (oldVersion < 5) {
       try {
-        await db.execute('ALTER TABLE learning_activity ADD COLUMN translations_looked_up INTEGER DEFAULT 0');
+        await db.execute(
+            'ALTER TABLE learning_activity ADD COLUMN translations_looked_up INTEGER DEFAULT 0');
       } catch (e) {
         print("Migration error config 5: $e");
       }
@@ -378,7 +377,8 @@ class DatabaseService {
         'reviews_completed':
             reviewsCompletedDelta < 0 ? 0 : reviewsCompletedDelta,
         'reading_minutes': readingMinutesDelta < 0 ? 0 : readingMinutesDelta,
-        'translations_looked_up': translationsLookedUpDelta < 0 ? 0 : translationsLookedUpDelta,
+        'translations_looked_up':
+            translationsLookedUpDelta < 0 ? 0 : translationsLookedUpDelta,
         'created_at': now,
         'updated_at': now,
       });
@@ -395,14 +395,14 @@ class DatabaseService {
             (row['reviews_completed'] as int? ?? 0) + reviewsCompletedDelta,
         'reading_minutes':
             (row['reading_minutes'] as int? ?? 0) + readingMinutesDelta,
-        'translations_looked_up':
-            (row['translations_looked_up'] as int? ?? 0) + translationsLookedUpDelta,
+        'translations_looked_up': (row['translations_looked_up'] as int? ?? 0) +
+            translationsLookedUpDelta,
         'updated_at': now,
       },
       where: 'activity_date = ?',
       whereArgs: [day],
     );
-    
+
     // Already existed, so streak was already bumped earlier today
     return false;
   }
@@ -543,7 +543,8 @@ class DatabaseService {
 
   Future<int> getWordListCount() async {
     final db = await database;
-    final result = await db.rawQuery('SELECT COUNT(*) as count FROM word_lists');
+    final result =
+        await db.rawQuery('SELECT COUNT(*) as count FROM word_lists');
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
@@ -766,7 +767,8 @@ class DatabaseService {
 
   Future<int> getPdfCount() async {
     final db = await database;
-    final result = await db.rawQuery('SELECT COUNT(*) as count FROM recent_pdfs');
+    final result =
+        await db.rawQuery('SELECT COUNT(*) as count FROM recent_pdfs');
     return Sqflite.firstIntValue(result) ?? 0;
   }
 
@@ -1267,7 +1269,8 @@ class DatabaseService {
   // AI Language Partner – Chat Sessions
   // ────────────────────────────────────────────────────────────────────────────
 
-  Future<int> createChatSession({String title = 'New Chat', String language = 'en'}) async {
+  Future<int> createChatSession(
+      {String title = 'New Chat', String language = 'en'}) async {
     final db = await database;
     final now = DateTime.now().toIso8601String();
     return await db.insert('chat_sessions', {
@@ -1390,8 +1393,8 @@ class DatabaseService {
 
   Future<void> updateCorrectionNote(int id, String note) async {
     final db = await database;
-    await db
-        .update('correction_metadata', {'user_note': note}, where: 'id = ?', whereArgs: [id]);
+    await db.update('correction_metadata', {'user_note': note},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteCorrection(int id) async {

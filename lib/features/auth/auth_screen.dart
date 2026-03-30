@@ -37,22 +37,23 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        
+
         String errorMessage = e.toString();
         if (errorMessage.contains('10:')) {
-          errorMessage = 'Configuration Error (10): Please ensure your SHA-1 fingerprint and Web Client ID are correctly registered in the Google Cloud Console.';
+          errorMessage =
+              'Configuration Error (10): Please ensure your SHA-1 fingerprint and Web Client ID are correctly registered in the Google Cloud Console.';
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Google sign-in failed: $errorMessage'),
-              backgroundColor: Colors.red,
-              duration: const Duration(seconds: 10),
-              action: SnackBarAction(
-                label: 'OK',
-                textColor: Colors.white,
-                onPressed: () {},
-              ),
+            content: Text('Google sign-in failed: $errorMessage'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 10),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
           ),
         );
       }

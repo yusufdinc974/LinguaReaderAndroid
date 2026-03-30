@@ -6,6 +6,8 @@ import '../ai_partner_providers.dart';
 import '../../../services/ai_partner_service.dart';
 import '../../reader/widgets/translation_sheet.dart';
 import 'correction_inform_box.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:flutter_tts/flutter_tts.dart';
 
 class ChatTab extends ConsumerStatefulWidget {
   const ChatTab({super.key});
@@ -18,8 +20,51 @@ class _ChatTabState extends ConsumerState<ChatTab> {
   final _msgController = TextEditingController();
   final _scrollController = ScrollController();
 
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  final FlutterTts _flutterTts = FlutterTts();
+  bool _voiceMode = true; // Default to true based on user request
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+    _initTts();
+  }
+
+  void _initSpeech() async {
+    await _speech.initialize();
+  }
+
+  void _initTts() async {
+    await _flutterTts.setLanguage(
+        "en-US"); // Default language, you can match to AI detection
+    await _flutterTts.setSpeechRate(0.5);
+  }
+
+  void _listen() async {
+    if (!_isListening) {
+      bool available = await _speech.initialize();
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              _msgController.text = val.recognizedWords;
+            });
+          },
+        );
+      }
+    } else {
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
+
   @override
   void dispose() {
+    _speech.stop();
+    _flutterTts.stop();
     _msgController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -56,13 +101,24 @@ class _ChatTabState extends ConsumerState<ChatTab> {
 
   Future<void> _startNewSession() async {
     ref.read(activeChatProvider.notifier).reset();
-    final id = await ref.read(chatSessionsProvider.notifier)
+    final id = await ref
+        .read(chatSessionsProvider.notifier)
         .createSession(title: 'New Chat');
     await ref.read(activeChatProvider.notifier).loadSession(id);
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ActiveChatState>(activeChatProvider, (previous, next) {
+      if (_voiceMode && next.messages.isNotEmpty && !next.isLoading) {
+        final lastMsg = next.messages.last;
+        final prevLen = previous?.messages.length ?? 0;
+        if (lastMsg.sender == 'ai' && next.messages.length > prevLen) {
+          _flutterTts.speak(lastMsg.content);
+        }
+      }
+    });
+
     final chatState = ref.watch(activeChatProvider);
     final sessions = ref.watch(chatSessionsProvider);
 
@@ -136,13 +192,13 @@ class _ChatTabState extends ConsumerState<ChatTab> {
                     chatState.error!.contains('GEMINI_API_KEY')
                         ? 'Gemini API key not configured.'
                         : chatState.error!,
-                    style: const TextStyle(
-                        color: AppColors.error, fontSize: 12),
+                    style:
+                        const TextStyle(color: AppColors.error, fontSize: 12),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, size: 16,
-                      color: AppColors.textSecondary),
+                  icon: const Icon(Icons.close,
+                      size: 16, color: AppColors.textSecondary),
                   onPressed: () =>
                       ref.read(activeChatProvider.notifier).clearError(),
                 )
@@ -154,6 +210,10 @@ class _ChatTabState extends ConsumerState<ChatTab> {
           controller: _msgController,
           isLoading: chatState.isLoading,
           onSend: _sendMessage,
+          isListening: _isListening,
+          onListen: _listen,
+          voiceMode: _voiceMode,
+          onToggleVoiceMode: () => setState(() => _voiceMode = !_voiceMode),
         ),
       ],
     );
@@ -215,9 +275,7 @@ class _SessionPickerSheet extends StatelessWidget {
   final int? activeId;
   final ValueChanged<int> onPick;
   const _SessionPickerSheet(
-      {required this.sessions,
-      required this.activeId,
-      required this.onPick});
+      {required this.sessions, required this.activeId, required this.onPick});
 
   @override
   Widget build(BuildContext context) {
@@ -226,8 +284,7 @@ class _SessionPickerSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Chat Sessions',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text('Chat Sessions', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           const Divider(height: 1),
           Flexible(
@@ -294,8 +351,8 @@ class _MessageTile extends StatelessWidget {
               ],
               Flexible(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: isUser
                         ? AppColors.primary
@@ -319,7 +376,8 @@ class _MessageTile extends StatelessWidget {
 
                             final selectedText = selectableRegionState
                                 .textEditingValue.selection
-                                .textInside(selectableRegionState.textEditingValue.text)
+                                .textInside(
+                                    selectableRegionState.textEditingValue.text)
                                 .trim();
 
                             if (selectedText.isNotEmpty) {
@@ -365,8 +423,9 @@ class _MessageTile extends StatelessWidget {
 
   void _showTranslation(BuildContext context, String word) {
     // Strip common punctuation around the ends if needed, though TranslationSheet often handles raw words well enough.
-    final lookupWord = word.replaceAll(RegExp(r'^[^\w\s\u00C0-\u00FF]+|[^\w\s\u00C0-\u00FF]+$'), '');
-    
+    final lookupWord = word.replaceAll(
+        RegExp(r'^[^\w\s\u00C0-\u00FF]+|[^\w\s\u00C0-\u00FF]+$'), '');
+
     // Import translation_sheet here lazily or assume flutter analyze will catch it.
     // We already have `showModalBottomSheet` available.
     // Need to use the explicit import of translation_sheet.dart. I will add it via another tool if missing.
@@ -424,7 +483,8 @@ class _EmptyChat extends StatelessWidget {
             const Text(
               'Practice your target language. I\'ll gently correct mistakes and explain why.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.5),
+              style: TextStyle(
+                  color: AppColors.textSecondary, fontSize: 14, height: 1.5),
             ),
           ],
         ),
@@ -438,11 +498,19 @@ class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool isLoading;
   final VoidCallback onSend;
+  final bool isListening;
+  final VoidCallback onListen;
+  final bool voiceMode;
+  final VoidCallback onToggleVoiceMode;
 
   const _InputBar({
     required this.controller,
     required this.isLoading,
     required this.onSend,
+    required this.isListening,
+    required this.onListen,
+    required this.voiceMode,
+    required this.onToggleVoiceMode,
   });
 
   @override
@@ -486,14 +554,36 @@ class _InputBar extends StatelessWidget {
                     borderSide:
                         const BorderSide(color: AppColors.primary, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   isDense: true,
                 ),
                 onSubmitted: (_) => isLoading ? null : onSend(),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
+            IconButton(
+              icon: Icon(
+                voiceMode ? Icons.volume_up : Icons.volume_off,
+                color: voiceMode ? AppColors.primary : AppColors.textSecondary,
+              ),
+              onPressed: onToggleVoiceMode,
+              tooltip: 'Toggle AI Voice',
+            ),
+            GestureDetector(
+              onTap: onListen,
+              child: Material(
+                color: isListening ? AppColors.error : AppColors.secondary,
+                shape: const CircleBorder(),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(10),
+                  child: Icon(isListening ? Icons.mic : Icons.mic_none,
+                      size: 20, color: Colors.white),
+                ),
+              ),
+            ),
+            const SizedBox(width: 4),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: isLoading
@@ -517,7 +607,7 @@ class _InputBar extends StatelessWidget {
                         child: const Padding(
                           padding: EdgeInsets.all(10),
                           child: Icon(Icons.send_rounded,
-                              size: 22, color: Colors.white),
+                              size: 20, color: Colors.white),
                         ),
                       ),
                     ),

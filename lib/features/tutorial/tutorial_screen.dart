@@ -146,8 +146,7 @@ class _TutorialScreenState extends State<TutorialScreen> {
                   const SizedBox(height: 14),
                   _buildStepCard(
                     title: 'Create a vocabulary list',
-                    description:
-                        'Add your first list to organize new words.',
+                    description: 'Add your first list to organize new words.',
                     completed: _listCount > 0,
                     actionLabel: 'Go to Vocabulary',
                     onAction: _openVocabulary,

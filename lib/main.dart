@@ -53,7 +53,8 @@ void main() async {
 
   await Supabase.initialize(
     url: 'https://hvhbdouycrskhxayubwj.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2aGJkb3V5Y3Jza2h4YXl1YndqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2OTk0NzksImV4cCI6MjA4ODI3NTQ3OX0.89TXY7GE4yzBk-2Jp_nP-BQv0fVlmVcjDBtHTWOgzew',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2aGJkb3V5Y3Jza2h4YXl1YndqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2OTk0NzksImV4cCI6MjA4ODI3NTQ3OX0.89TXY7GE4yzBk-2Jp_nP-BQv0fVlmVcjDBtHTWOgzew',
   );
 
   // Initialize RevenueCat
@@ -62,7 +63,8 @@ void main() async {
   // If a user is already logged in, sync their ID to RevenueCat
   final existingUser = Supabase.instance.client.auth.currentUser;
   if (existingUser != null) {
-    SubscriptionService.loginUser(existingUser.id); // Don't strictly await here to prevent splash hang
+    SubscriptionService.loginUser(
+        existingUser.id); // Don't strictly await here to prevent splash hang
   }
 
   runApp(const ProviderScope(child: LinguaReaderApp()));
@@ -123,10 +125,10 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
     try {
       // 1. Sync data if we're signed in on startup
       await SyncService.syncOnLogin();
-      
+
       // 2. Check profile completeness
       final complete = await DatabaseService().isUserProfileComplete();
-      
+
       if (mounted) {
         setState(() {
           _profileComplete = complete;
@@ -175,8 +177,9 @@ class _AuthGateState extends ConsumerState<_AuthGate> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text('Syncing your Lexi profile...', 
-                    style: TextStyle(color: Colors.grey, fontFamily: 'monospace')),
+                  Text('Syncing your Lexi profile...',
+                      style: TextStyle(
+                          color: Colors.grey, fontFamily: 'monospace')),
                 ],
               ),
             ),

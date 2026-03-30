@@ -59,7 +59,8 @@ class _WordListScreenState extends State<WordListScreen> {
         );
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Free tier is limited to 3 word lists. Upgrade to Premium for unlimited!')),
+              content: Text(
+                  'Free tier is limited to 3 word lists. Upgrade to Premium for unlimited!')),
         );
       }
       return;
@@ -148,8 +149,8 @@ class _WordListScreenState extends State<WordListScreen> {
                         if (exists) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                                content:
-                                    Text('A list with this name already exists.')),
+                                content: Text(
+                                    'A list with this name already exists.')),
                           );
                           return;
                         }

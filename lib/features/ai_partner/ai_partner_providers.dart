@@ -90,17 +90,20 @@ class ActiveChatNotifier extends StateNotifier<ActiveChatState> {
 
   /// Load (or create) a session and fetch its history from DB.
   Future<void> loadSession(int sessionId) async {
-    state = state.copyWith(sessionId: sessionId, messages: [], isLoading: true, clearError: true);
+    state = state.copyWith(
+        sessionId: sessionId, messages: [], isLoading: true, clearError: true);
     try {
       final db = DatabaseService();
       final rows = await db.getChatMessages(sessionId);
       final messages = rows.map(ChatMessage.fromMap).toList();
-      
+
       final profile = await db.getUserProfile();
       final nativeLang = profile?['native_language'] as String? ?? 'English';
 
       // Pre-load Gemini history so the model has context
-      _ref.read(aiPartnerServiceProvider).loadHistory(sessionId, messages, nativeLang);
+      _ref
+          .read(aiPartnerServiceProvider)
+          .loadHistory(sessionId, messages, nativeLang);
       state = state.copyWith(messages: messages, isLoading: false);
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -136,7 +139,8 @@ class ActiveChatNotifier extends StateNotifier<ActiveChatState> {
       final nativeLang = profile?['native_language'] as String? ?? 'English';
 
       // Call Gemini
-      final result = await service.sendMessage(sessionId, text.trim(), explanationLanguage: nativeLang);
+      final result = await service.sendMessage(sessionId, text.trim(),
+          explanationLanguage: nativeLang);
 
       // Persist AI message
       final aiMsgId = await db.addChatMessage(
@@ -207,7 +211,8 @@ class HistoryState {
   final bool isLoading;
   final String? error;
   final String searchQuery;
-  final String selectedCategory; // 'all' | 'grammar' | 'spelling' | 'naturalness'
+  final String
+      selectedCategory; // 'all' | 'grammar' | 'spelling' | 'naturalness'
 
   const HistoryState({
     this.corrections = const [],
@@ -247,7 +252,8 @@ class HistoryNotifier extends StateNotifier<HistoryState> {
     state = state.copyWith(isLoading: true);
     try {
       final rows = await DatabaseService().getCorrections(
-        category: state.selectedCategory == 'all' ? null : state.selectedCategory,
+        category:
+            state.selectedCategory == 'all' ? null : state.selectedCategory,
         searchQuery: state.searchQuery.isEmpty ? null : state.searchQuery,
       );
       state = state.copyWith(

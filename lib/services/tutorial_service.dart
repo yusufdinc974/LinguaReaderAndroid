@@ -7,8 +7,7 @@ import 'database_service.dart';
 class TutorialService {
   static const String tutorialSeenKey = 'tutorial_seen';
   static const String sampleOpenedKey = 'tutorial_sample_opened';
-  static const String readerTutorialCompletedKey =
-      'tutorial_reader_completed';
+  static const String readerTutorialCompletedKey = 'tutorial_reader_completed';
   static const String sampleVersionKey = 'tutorial_sample_version';
   static const int sampleVersion = 6;
 
@@ -67,7 +66,8 @@ class TutorialService {
   }
 
   static Future<bool> isReaderTutorialCompleted() async {
-    final value = await DatabaseService().getSetting(readerTutorialCompletedKey);
+    final value =
+        await DatabaseService().getSetting(readerTutorialCompletedKey);
     return value == '1';
   }
 

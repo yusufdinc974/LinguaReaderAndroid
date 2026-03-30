@@ -13,10 +13,11 @@ class FlatFirePainter extends CustomPainter {
     if (animationProgress <= 0) return;
 
     final double time = animationProgress * 10.0;
-    
+
     // Make the fire rise from the bottom smoothly as progress goes from 0 to 1
-    final double riseFactor = Curves.easeOut.transform(animationProgress.clamp(0.0, 1.0));
-    
+    final double riseFactor =
+        Curves.easeOut.transform(animationProgress.clamp(0.0, 1.0));
+
     // Draw 3 layers of 2D wavy flames
     _drawFlameLayer(
       canvas: canvas,
@@ -67,27 +68,27 @@ class FlatFirePainter extends CustomPainter {
 
     final double width = size.width;
     final double baseY = size.height - (size.height * heightScale);
-    
+
     List<Offset> points = [];
     points.add(Offset(0, baseY));
-    
+
     for (int i = 1; i <= complexity; i++) {
       double normalizedX = i / complexity;
       double x = normalizedX * width;
-      
+
       // Combine two sine waves for organic 2D flame wiggling
       double wave1 = sin(time * speed + normalizedX * pi * 2 + phase);
       double wave2 = cos(time * speed * 1.4 + normalizedX * pi * 4 + phase);
-      
+
       // Amplitude of the flame spikes
       double spikeAmplitude = 80.0 * heightScale;
-      
+
       // We want the edges to be lower and the center to have higher spikes occasionally?
       // For a uniform sea of fire, just base it on the waves.
       double y = baseY + (wave1 + wave2) * spikeAmplitude;
       points.add(Offset(x, y));
     }
-    
+
     // Draw smooth curved lines between points
     path.lineTo(points[0].dx, points[0].dy);
     for (int i = 0; i < points.length - 1; i++) {
@@ -97,14 +98,14 @@ class FlatFirePainter extends CustomPainter {
     }
     // Connect to the last exact point
     path.lineTo(points.last.dx, points.last.dy);
-    
+
     path.lineTo(size.width, size.height);
     path.close();
 
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.fill;
-      
+
     canvas.drawPath(path, paint);
   }
 

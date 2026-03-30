@@ -29,7 +29,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
             MaterialPageRoute(builder: (_) => const PaywallScreen()),
           );
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Free tier is limited to 5 PDFs. Upgrade to Premium for unlimited storage!')),
+            const SnackBar(
+                content: Text(
+                    'Free tier is limited to 5 PDFs. Upgrade to Premium for unlimited storage!')),
           );
         }
         return;

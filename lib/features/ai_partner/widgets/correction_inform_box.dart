@@ -74,7 +74,8 @@ class _CorrectionInformBoxState extends State<CorrectionInformBox>
         decoration: BoxDecoration(
           color: _categoryColor.withOpacity(0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: _categoryColor.withOpacity(0.45), width: 1.5),
+          border:
+              Border.all(color: _categoryColor.withOpacity(0.45), width: 1.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -88,8 +89,8 @@ class _CorrectionInformBoxState extends State<CorrectionInformBox>
                       size: 15, color: _categoryColor),
                   const SizedBox(width: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: _categoryColor.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(4),

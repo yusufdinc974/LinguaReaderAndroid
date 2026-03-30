@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>We need speech recognition to allow you to talk with the AI Language Partner.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>We need microphone access to hear your voice during chat.</string>
 </dict>
 </plist>

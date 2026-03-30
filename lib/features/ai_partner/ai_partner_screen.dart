@@ -195,8 +195,7 @@ class _PremiumGateView extends StatelessWidget {
             const SizedBox(height: 14),
             const Text(
               'Cancel anytime. Subscriptions auto-renew until cancelled.',
-              style: TextStyle(
-                  color: AppColors.textTertiary, fontSize: 11),
+              style: TextStyle(color: AppColors.textTertiary, fontSize: 11),
               textAlign: TextAlign.center,
             ),
           ],

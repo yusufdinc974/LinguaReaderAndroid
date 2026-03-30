@@ -5,7 +5,7 @@ class AppColors {
   static const Color primary = Color(0xFFDF7B31);
   static const Color primaryDark = Color(0xFFAF4E1D);
   static const Color primaryLight = Color(0xFFF2A76A);
-  
+
   // Secondary action (Muted Teal to contrast Orange).
   static const Color secondary = Color(0xFF3D8E86);
 
@@ -26,7 +26,8 @@ class AppColors {
   static const Color textSecondary = Color(0xFF9CA3AF);
   static const Color textTertiary = Color(0xFF6B7280);
   static const Color lightTextPrimary = Color(0xFF111827);
-  static const Color lightTextSecondary = Color(0xFF374151); // Darkened for contrast
+  static const Color lightTextSecondary =
+      Color(0xFF374151); // Darkened for contrast
   static const Color lightTextTertiary = Color(0xFF4B5563);
 
   // Functional Colors

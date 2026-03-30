@@ -114,13 +114,15 @@ class AppTheme {
         side: const BorderSide(color: AppColors.border, width: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         minimumSize: const Size(48, 50),
-        textStyle: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
+        textStyle:
+            GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.primaryLight,
-        textStyle: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
+        textStyle:
+            GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -149,7 +151,8 @@ class AppTheme {
         final color = states.contains(MaterialState.selected)
             ? AppColors.primaryLight
             : AppColors.textSecondary;
-        return GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: color);
+        return GoogleFonts.nunito(
+            fontSize: 12, fontWeight: FontWeight.w700, color: color);
       }),
       iconTheme: MaterialStateProperty.resolveWith<IconThemeData?>((states) {
         return IconThemeData(
@@ -271,13 +274,15 @@ class AppTheme {
         side: const BorderSide(color: AppColors.lightBorder, width: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         minimumSize: const Size(48, 50),
-        textStyle: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
+        textStyle:
+            GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.primaryDark,
-        textStyle: GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
+        textStyle:
+            GoogleFonts.nunito(fontSize: 15, fontWeight: FontWeight.w800),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -306,7 +311,8 @@ class AppTheme {
         final color = states.contains(MaterialState.selected)
             ? AppColors.primaryDark
             : AppColors.lightTextSecondary;
-        return GoogleFonts.nunito(fontSize: 12, fontWeight: FontWeight.w700, color: color);
+        return GoogleFonts.nunito(
+            fontSize: 12, fontWeight: FontWeight.w700, color: color);
       }),
       iconTheme: MaterialStateProperty.resolveWith<IconThemeData?>((states) {
         return IconThemeData(

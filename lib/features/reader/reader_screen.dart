@@ -346,221 +346,229 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
 
     return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, dynamic result) async {
-        if (didPop) return;
-        
-        final spentMinutes = DateTime.now().difference(_sessionStartedAt).inMinutes;
-        if (spentMinutes > 0) {
-          try {
-            final bumpedStreak = await _databaseService.logLearningActivity(
-              readingMinutesDelta: spentMinutes,
-            );
-            if (bumpedStreak && mounted) {
-              final streakData = await _databaseService.getLearningStreakStats();
-              if (mounted) {
-                await StreakAnimationOverlay.show(context, newStreak: streakData['current'] ?? 0);
-              }
-            }
-          } catch (_) {}
-        }
-        
-        if (context.mounted) {
-          Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Reader'),
-          actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              await _loadPdf();
-              // Highlights will be applied when document loads
-            },
-          ),
-          IconButton(
-            icon: Icon(_selectedListIds.isEmpty
-                ? Icons.filter_alt_off
-                : Icons.filter_alt),
-            onPressed: _showHighlightFilterDialog,
-          ),
-        ],
-      ),
-      body: Stack(
-        children: [
-          SfPdfViewer.file(
-            _pdfFile!,
-            key: ValueKey(widget.filePath), // Stable key based on file path
-            controller: _pdfViewerController,
-            pageLayoutMode: _isLargePdf
-                ? PdfPageLayoutMode.single
-                : PdfPageLayoutMode.continuous,
-            interactionMode:
-                _isLargePdf ? PdfInteractionMode.pan : PdfInteractionMode.selection,
-            pageSpacing: _isLargePdf ? 0 : 4,
-            canShowScrollHead: !_isLargePdf,
-            canShowScrollStatus: !_isLargePdf,
-            canShowPaginationDialog: !_isLargePdf,
-            canShowSignaturePadDialog: !_isLargePdf,
-            enableDocumentLinkAnnotation: !_isLargePdf,
-            enableHyperlinkNavigation: !_isLargePdf,
-            canShowHyperlinkDialog: !_isLargePdf,
-            enableDoubleTapZooming: !_isLargePdf,
-            useFilePathOnAndroid: true,
-            enableFullTextExtraction: false,
-            maxRenderPixels: _isLargePdf ? 2000000 : 6000000,
-            maxDevicePixelRatio: 2.0,
-            initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
-            initialZoomLevel: _preservedZoomLevel ?? 1.0,
-            maxZoomLevel: _isLargePdf ? 2 : 3,
-            enableTextSelection: true,
-            canShowTextSelectionMenu: false,
-            onDocumentLoaded: (PdfDocumentLoadedDetails details) {
-              // Document is now ready for annotations
-              _pdfLoaded = true;
-              if (_isLargePdf) {
-                _maybeShowLargePdfNotice();
-                return;
-              }
-              // Apply initial highlights
-              _applyHighlightOverlays();
-            },
-            onTextSelectionChanged: (PdfTextSelectionChangedDetails details) {
-              if (details.selectedText == null ||
-                  details.selectedText!.trim().isEmpty) {
-                setState(() {
-                  _selectionDetails = null;
-                  _tempSelectedText = null;
-                  _showSelectionActions = false;
-                });
-                return;
-              }
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, dynamic result) async {
+          if (didPop) return;
 
-              final text = details.selectedText!.trim();
-              if (text.isNotEmpty) {
-                setState(() {
-                  _selectionDetails = details;
-                  _tempSelectedText = text;
-                  _showSelectionActions = false;
-                });
-                if (_showReaderTutorial && _readerTutorialStep == 0) {
-                  _advanceReaderTutorial(1);
+          final spentMinutes =
+              DateTime.now().difference(_sessionStartedAt).inMinutes;
+          if (spentMinutes > 0) {
+            try {
+              final bumpedStreak = await _databaseService.logLearningActivity(
+                readingMinutesDelta: spentMinutes,
+              );
+              if (bumpedStreak && mounted) {
+                final streakData =
+                    await _databaseService.getLearningStreakStats();
+                if (mounted) {
+                  await StreakAnimationOverlay.show(context,
+                      newStreak: streakData['current'] ?? 0);
                 }
               }
-            },
+            } catch (_) {}
+          }
+
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Reader'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () async {
+                  await _loadPdf();
+                  // Highlights will be applied when document loads
+                },
+              ),
+              IconButton(
+                icon: Icon(_selectedListIds.isEmpty
+                    ? Icons.filter_alt_off
+                    : Icons.filter_alt),
+                onPressed: _showHighlightFilterDialog,
+              ),
+            ],
           ),
-          if (_selectionDetails != null)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 32,
-              child: Card(
-                elevation: 0,
-                color: Theme.of(context).colorScheme.surface,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(color: AppColors.border, width: 2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: _showSelectionActions
-                      ? Row(
-                          children: [
-                            Expanded(
-                              child: _buildLargeActionButton(
-                                icon: Icons.translate,
-                                label: 'Translate',
-                                onTap: () {
-                                  final selected = _tempSelectedText?.trim();
-                                  if (selected == null || selected.isEmpty) {
-                                    return;
-                                  }
-                                  if (_showReaderTutorial &&
-                                      _readerTutorialStep == 2) {
-                                    _advanceReaderTutorial(3);
-                                  }
-                                  _showTranslation(selected);
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildLargeActionButton(
-                                icon: Icons.copy,
-                                label: 'Copy',
-                                onTap: _copySelectedText,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildLargeActionButton(
-                                icon: Icons.close,
-                                label: 'Cancel',
-                                onTap: _clearSelectionState,
-                              ),
-                            ),
-                          ],
-                        )
-                      : Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Selection ready (${(_tempSelectedText ?? '').length} chars)',
-                                style: const TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontWeight: FontWeight.w600,
+          body: Stack(
+            children: [
+              SfPdfViewer.file(
+                _pdfFile!,
+                key: ValueKey(widget.filePath), // Stable key based on file path
+                controller: _pdfViewerController,
+                pageLayoutMode: _isLargePdf
+                    ? PdfPageLayoutMode.single
+                    : PdfPageLayoutMode.continuous,
+                interactionMode: _isLargePdf
+                    ? PdfInteractionMode.pan
+                    : PdfInteractionMode.selection,
+                pageSpacing: _isLargePdf ? 0 : 4,
+                canShowScrollHead: !_isLargePdf,
+                canShowScrollStatus: !_isLargePdf,
+                canShowPaginationDialog: !_isLargePdf,
+                canShowSignaturePadDialog: !_isLargePdf,
+                enableDocumentLinkAnnotation: !_isLargePdf,
+                enableHyperlinkNavigation: !_isLargePdf,
+                canShowHyperlinkDialog: !_isLargePdf,
+                enableDoubleTapZooming: !_isLargePdf,
+                useFilePathOnAndroid: true,
+                enableFullTextExtraction: false,
+                maxRenderPixels: _isLargePdf ? 2000000 : 6000000,
+                maxDevicePixelRatio: 2.0,
+                initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
+                initialZoomLevel: _preservedZoomLevel ?? 1.0,
+                maxZoomLevel: _isLargePdf ? 2 : 3,
+                enableTextSelection: true,
+                canShowTextSelectionMenu: false,
+                onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+                  // Document is now ready for annotations
+                  _pdfLoaded = true;
+                  if (_isLargePdf) {
+                    _maybeShowLargePdfNotice();
+                    return;
+                  }
+                  // Apply initial highlights
+                  _applyHighlightOverlays();
+                },
+                onTextSelectionChanged:
+                    (PdfTextSelectionChangedDetails details) {
+                  if (details.selectedText == null ||
+                      details.selectedText!.trim().isEmpty) {
+                    setState(() {
+                      _selectionDetails = null;
+                      _tempSelectedText = null;
+                      _showSelectionActions = false;
+                    });
+                    return;
+                  }
+
+                  final text = details.selectedText!.trim();
+                  if (text.isNotEmpty) {
+                    setState(() {
+                      _selectionDetails = details;
+                      _tempSelectedText = text;
+                      _showSelectionActions = false;
+                    });
+                    if (_showReaderTutorial && _readerTutorialStep == 0) {
+                      _advanceReaderTutorial(1);
+                    }
+                  }
+                },
+              ),
+              if (_selectionDetails != null)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 32,
+                  child: Card(
+                    elevation: 0,
+                    color: Theme.of(context).colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: const BorderSide(color: AppColors.border, width: 2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: _showSelectionActions
+                          ? Row(
+                              children: [
+                                Expanded(
+                                  child: _buildLargeActionButton(
+                                    icon: Icons.translate,
+                                    label: 'Translate',
+                                    onTap: () {
+                                      final selected =
+                                          _tempSelectedText?.trim();
+                                      if (selected == null ||
+                                          selected.isEmpty) {
+                                        return;
+                                      }
+                                      if (_showReaderTutorial &&
+                                          _readerTutorialStep == 2) {
+                                        _advanceReaderTutorial(3);
+                                      }
+                                      _showTranslation(selected);
+                                    },
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildLargeActionButton(
+                                    icon: Icons.copy,
+                                    label: 'Copy',
+                                    onTap: _copySelectedText,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _buildLargeActionButton(
+                                    icon: Icons.close,
+                                    label: 'Cancel',
+                                    onTap: _clearSelectionState,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Selection ready (${(_tempSelectedText ?? '').length} chars)',
+                                    style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const FoxSpriteAnimator(
+                                  animation: FoxAnimation.walkWest,
+                                  size: 34,
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    setState(
+                                        () => _showSelectionActions = true);
+                                    if (_showReaderTutorial &&
+                                        _readerTutorialStep == 1) {
+                                      _advanceReaderTutorial(2);
+                                    }
+                                  },
+                                  icon: const Icon(Icons.touch_app, size: 20),
+                                  label: const Text('Actions'),
+                                  style: ElevatedButton.styleFrom(
+                                    minimumSize: const Size(132, 52),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 16),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton(
+                                  onPressed: _clearSelectionState,
+                                  style: OutlinedButton.styleFrom(
+                                    minimumSize: const Size(88, 52),
+                                  ),
+                                  child: const Text('Clear'),
+                                ),
+                              ],
                             ),
-                            const FoxSpriteAnimator(
-                              animation: FoxAnimation.walkWest,
-                              size: 34,
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton.icon(
-                              onPressed: () {
-                                setState(() => _showSelectionActions = true);
-                                if (_showReaderTutorial &&
-                                    _readerTutorialStep == 1) {
-                                  _advanceReaderTutorial(2);
-                                }
-                              },
-                              icon: const Icon(Icons.touch_app, size: 20),
-                              label: const Text('Actions'),
-                              style: ElevatedButton.styleFrom(
-                                minimumSize: const Size(132, 52),
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 16),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            OutlinedButton(
-                              onPressed: _clearSelectionState,
-                              style: OutlinedButton.styleFrom(
-                                minimumSize: const Size(88, 52),
-                              ),
-                              child: const Text('Clear'),
-                            ),
-                          ],
-                        ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          if (_showReaderTutorial && _isSamplePdf && _readerTutorialVisible)
-            Positioned(
-              left: 12,
-              right: 12,
-              top: 12,
-              child: SafeArea(
-                bottom: false,
-                child: _buildReaderTutorialCard(),
-              ),
-            ),
-        ],
-      ),
-    ));
+              if (_showReaderTutorial && _isSamplePdf && _readerTutorialVisible)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  top: 12,
+                  child: SafeArea(
+                    bottom: false,
+                    child: _buildReaderTutorialCard(),
+                  ),
+                ),
+            ],
+          ),
+        ));
   }
 
   Widget _buildLargeActionButton({
@@ -731,8 +739,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
       _TutorialStep(
         imagePath: 'assets/fox_tutorial/embarresed.png',
-        message:
-            'Pick a list and hit Save. Please do not judge my diary...',
+        message: 'Pick a list and hit Save. Please do not judge my diary...',
       ),
     ];
 

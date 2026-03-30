@@ -9,8 +9,10 @@ class ProfileOnboardingScreen extends StatefulWidget {
   final bool forceCompletion;
   final VoidCallback? onComplete;
 
-  const ProfileOnboardingScreen({super.key, this.onComplete}) : forceCompletion = false;
-  const ProfileOnboardingScreen.force({super.key, this.onComplete}) : forceCompletion = true;
+  const ProfileOnboardingScreen({super.key, this.onComplete})
+      : forceCompletion = false;
+  const ProfileOnboardingScreen.force({super.key, this.onComplete})
+      : forceCompletion = true;
 
   @override
   State<ProfileOnboardingScreen> createState() =>
@@ -25,7 +27,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
 
   int _step = 0;
   bool _isSaving = false;
-  
+
   // Exit Animation
   bool _isPlayingExitAnimation = false;
   double _exitFoxOffset = 0.0;
@@ -62,9 +64,18 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
   ];
 
   final List<String> _languageOptions = const [
-    'English', 'Spanish', 'French', 'German', 'Italian',
-    'Portuguese', 'Dutch', 'Polish', 'Russian', 'Japanese',
-    'Chinese', 'Turkish',
+    'English',
+    'Spanish',
+    'French',
+    'German',
+    'Italian',
+    'Portuguese',
+    'Dutch',
+    'Polish',
+    'Russian',
+    'Japanese',
+    'Chinese',
+    'Turkish',
   ];
 
   @override
@@ -78,12 +89,14 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
   }
 
   void _updatePortalCenter() {
-    final RenderBox? renderBox = _portalKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? renderBox =
+        _portalKey.currentContext?.findRenderObject() as RenderBox?;
     if (renderBox != null) {
       final size = renderBox.size;
       final offset = renderBox.localToGlobal(Offset.zero);
       setState(() {
-        _portalCenter = Offset(offset.dx + size.width / 2, offset.dy + size.height / 2);
+        _portalCenter =
+            Offset(offset.dx + size.width / 2, offset.dy + size.height / 2);
       });
     }
   }
@@ -99,7 +112,8 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
     // 0.6 - 0.7: Portal closes
     _orangeRadiusAnim = TweenSequence<double>([
       TweenSequenceItem(
-        tween: Tween<double>(begin: 2500.0, end: 50.0).chain(CurveTween(curve: Curves.easeInOutCubic)),
+        tween: Tween<double>(begin: 2500.0, end: 50.0)
+            .chain(CurveTween(curve: Curves.easeInOutCubic)),
         weight: 40,
       ),
       TweenSequenceItem(
@@ -107,7 +121,8 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
         weight: 20,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 50.0, end: 0.0).chain(CurveTween(curve: Curves.easeInBack)),
+        tween: Tween<double>(begin: 50.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInBack)),
         weight: 10,
       ),
       TweenSequenceItem(
@@ -120,7 +135,8 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
     _foxScaleAnim = TweenSequence<double>([
       TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 40),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: 1.0).chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween<double>(begin: 0.0, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 10,
       ),
       TweenSequenceItem(tween: ConstantTween<double>(1.0), weight: 50),
@@ -130,11 +146,13 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
     _foxJumpYAnim = TweenSequence<double>([
       TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 40),
       TweenSequenceItem(
-        tween: Tween<double>(begin: 0.0, end: -60.0).chain(CurveTween(curve: Curves.easeOutQuad)),
+        tween: Tween<double>(begin: 0.0, end: -60.0)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
         weight: 5,
       ),
       TweenSequenceItem(
-        tween: Tween<double>(begin: -60.0, end: 0.0).chain(CurveTween(curve: Curves.easeInQuad)),
+        tween: Tween<double>(begin: -60.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeInQuad)),
         weight: 5,
       ),
       TweenSequenceItem(tween: ConstantTween<double>(0.0), weight: 50),
@@ -143,16 +161,16 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
     _entranceAnimController.addListener(() {
       final t = _entranceAnimController.value;
       FoxAnimation anim;
-      
+
       if (t < 0.4) {
         // Fox is hidden
-        anim = FoxAnimation.jumpSouth; 
+        anim = FoxAnimation.jumpSouth;
       } else if (t >= 0.4 && t < 0.5) {
         // Fox is jumping out
-        anim = FoxAnimation.jumpSouth; 
+        anim = FoxAnimation.jumpSouth;
       } else {
         // Fox arrived and is standing still
-        anim = FoxAnimation.staticIdleSouth; 
+        anim = FoxAnimation.staticIdleSouth;
       }
 
       // Avoid overriding exit animation state
@@ -202,7 +220,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
       _showToast('Please enter your native language.');
       return;
     }
-    
+
     if (_step == 0 && !_isPlayingExitAnimation) {
       _playFoxRunningSequence();
       return;
@@ -227,7 +245,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
     setState(() {
       _isPlayingExitAnimation = true;
       _foxAnimation = FoxAnimation.jumpEast;
-      _exitFoxOffset = MediaQuery.of(context).size.width; 
+      _exitFoxOffset = MediaQuery.of(context).size.width;
     });
 
     await Future.delayed(const Duration(milliseconds: 1000));
@@ -236,7 +254,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
 
     setState(() {
       _isPlayingExitAnimation = false;
-      _foxAnimation = FoxAnimation.walkWest; 
+      _foxAnimation = FoxAnimation.walkWest;
       _exitFoxOffset = 0.0;
       _step += 1;
     });
@@ -354,8 +372,8 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
                         value: progress,
                         minHeight: 8,
                         backgroundColor: Theme.of(context).colorScheme.surface,
-                        valueColor:
-                            const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            AppColors.primary),
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -372,7 +390,12 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: _step == 0 || _isSaving || _isPlayingExitAnimation || _entranceAnimController.value < 0.95 ? null : _back,
+                            onPressed: _step == 0 ||
+                                    _isSaving ||
+                                    _isPlayingExitAnimation ||
+                                    _entranceAnimController.value < 0.95
+                                ? null
+                                : _back,
                             child: const Text('Back'),
                           ),
                         ),
@@ -380,8 +403,13 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
                         Expanded(
                           flex: 2,
                           child: ElevatedButton(
-                            onPressed: _isSaving || _isPlayingExitAnimation || _entranceAnimController.value < 0.95 ? null : _next,
-                            child: Text(_step == 3 ? 'Create Profile' : 'Continue'),
+                            onPressed: _isSaving ||
+                                    _isPlayingExitAnimation ||
+                                    _entranceAnimController.value < 0.95
+                                ? null
+                                : _next,
+                            child: Text(
+                                _step == 3 ? 'Create Profile' : 'Continue'),
                           ),
                         ),
                       ],
@@ -391,22 +419,23 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
               ),
             ),
           ),
-          
+
           // Orange Screen Shrinking Reveal Overlay (only on step 0)
           if (_step == 0)
-             AnimatedBuilder(
-               animation: _entranceAnimController,
-               builder: (context, child) {
-                 if (_entranceAnimController.value >= 0.5) return const SizedBox.shrink();
-                 return CustomPaint(
-                   size: MediaQuery.of(context).size,
-                   painter: _OrangeCirclePainter(
-                     holeRadius: _orangeRadiusAnim.value,
-                     portalCenter: _portalCenter,
-                   ),
-                 );
-               },
-             ),
+            AnimatedBuilder(
+              animation: _entranceAnimController,
+              builder: (context, child) {
+                if (_entranceAnimController.value >= 0.5)
+                  return const SizedBox.shrink();
+                return CustomPaint(
+                  size: MediaQuery.of(context).size,
+                  painter: _OrangeCirclePainter(
+                    holeRadius: _orangeRadiusAnim.value,
+                    portalCenter: _portalCenter,
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -429,7 +458,7 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
     return ListView(
       children: [
         const SizedBox(height: 20),
-        
+
         // Animated Fox Sequence
         SizedBox(
           height: 190,
@@ -447,8 +476,10 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const PixelTextBubble(
-                          text: "Hi there! I'm your language fox.\nWhat should I call you?",
-                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          text:
+                              "Hi there! I'm your language fox.\nWhat should I call you?",
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 12),
                         ),
                         const SizedBox(height: 8),
                         SizedBox(
@@ -462,48 +493,55 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
                 ),
               ),
               AnimatedBuilder(
-                animation: _entranceAnimController,
-                builder: (context, child) {
-                  final double x = 0.0;
-                  final double y = _foxJumpYAnim.value;
-                  final double scale = _foxScaleAnim.value;
-                  final double bubbleOpacity = (_entranceAnimController.value > 0.75 && !_isPlayingExitAnimation) ? 1.0 : 0.0;
+                  animation: _entranceAnimController,
+                  builder: (context, child) {
+                    final double x = 0.0;
+                    final double y = _foxJumpYAnim.value;
+                    final double scale = _foxScaleAnim.value;
+                    final double bubbleOpacity =
+                        (_entranceAnimController.value > 0.75 &&
+                                !_isPlayingExitAnimation)
+                            ? 1.0
+                            : 0.0;
 
-                  return AnimatedContainer(
-                    duration: _isPlayingExitAnimation ? const Duration(milliseconds: 1000) : Duration.zero,
-                    curve: Curves.easeInCubic,
-                    transform: Matrix4.translationValues(
-                        _isPlayingExitAnimation ? _exitFoxOffset : x, 
-                        _isPlayingExitAnimation ? 0.0 : y, 
-                        0.0),
-                    child: Transform.scale(
-                      scale: scale,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          AnimatedOpacity(
-                            duration: const Duration(milliseconds: 300),
-                            opacity: bubbleOpacity,
-                            child: const PixelTextBubble(
-                              text: "Hi there! I'm Lexi, your language fox.\nWhat should I call you?",
-                              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    return AnimatedContainer(
+                      duration: _isPlayingExitAnimation
+                          ? const Duration(milliseconds: 1000)
+                          : Duration.zero,
+                      curve: Curves.easeInCubic,
+                      transform: Matrix4.translationValues(
+                          _isPlayingExitAnimation ? _exitFoxOffset : x,
+                          _isPlayingExitAnimation ? 0.0 : y,
+                          0.0),
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            AnimatedOpacity(
+                              duration: const Duration(milliseconds: 300),
+                              opacity: bubbleOpacity,
+                              child: const PixelTextBubble(
+                                text:
+                                    "Hi there! I'm Lexi, your language fox.\nWhat should I call you?",
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 12),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          FoxSpriteAnimator(
-                            animation: _foxAnimation,
-                            size: 90,
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            FoxSpriteAnimator(
+                              animation: _foxAnimation,
+                              size: 90,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  );
-                }
-              ),
+                    );
+                  }),
             ],
           ),
         ),
-        
+
         const SizedBox(height: 32),
         AnimatedBuilder(
           animation: _entranceAnimController,
@@ -527,8 +565,12 @@ class _ProfileOnboardingScreenState extends State<ProfileOnboardingScreen>
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: _languageOptions.any((l) => l.toLowerCase() == _nativeLanguageController.text.trim().toLowerCase())
-                    ? _languageOptions.firstWhere((l) => l.toLowerCase() == _nativeLanguageController.text.trim().toLowerCase())
+                value: _languageOptions.any((l) =>
+                        l.toLowerCase() ==
+                        _nativeLanguageController.text.trim().toLowerCase())
+                    ? _languageOptions.firstWhere((l) =>
+                        l.toLowerCase() ==
+                        _nativeLanguageController.text.trim().toLowerCase())
                     : 'Turkish',
                 decoration: const InputDecoration(
                   labelText: 'Native language',
@@ -716,14 +758,16 @@ class _OrangeCirclePainter extends CustomPainter {
 
     final paint = Paint()..color = AppColors.primary;
     // Default fallback while portalCenter is null
-    final center = portalCenter ?? Offset(size.width / 2 - 100, size.height / 2);
-    
+    final center =
+        portalCenter ?? Offset(size.width / 2 - 100, size.height / 2);
+
     // Draw an orange circle that acts as the shrinking background.
     canvas.drawCircle(center, holeRadius, paint);
   }
 
   @override
   bool shouldRepaint(_OrangeCirclePainter oldDelegate) {
-    return oldDelegate.holeRadius != holeRadius || oldDelegate.portalCenter != portalCenter;
+    return oldDelegate.holeRadius != holeRadius ||
+        oldDelegate.portalCenter != portalCenter;
   }
 }

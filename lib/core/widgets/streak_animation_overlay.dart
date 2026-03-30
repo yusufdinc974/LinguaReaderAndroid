@@ -14,7 +14,8 @@ class StreakAnimationOverlay extends StatefulWidget {
   });
 
   /// Helper to show this directly as an overlay dialog
-  static Future<void> show(BuildContext context, {required int newStreak}) async {
+  static Future<void> show(BuildContext context,
+      {required int newStreak}) async {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -40,7 +41,7 @@ class _StreakAnimationOverlayState extends State<StreakAnimationOverlay>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
-  
+
   bool _readyToDismiss = false;
 
   @override
@@ -55,11 +56,13 @@ class _StreakAnimationOverlayState extends State<StreakAnimationOverlay>
     _scaleAnimation = TweenSequence<double>([
       TweenSequenceItem(tween: ConstantTween(0.0), weight: 15),
       TweenSequenceItem(
-        tween: Tween(begin: 0.0, end: 1.2).chain(CurveTween(curve: Curves.easeOutBack)),
+        tween: Tween(begin: 0.0, end: 1.2)
+            .chain(CurveTween(curve: Curves.easeOutBack)),
         weight: 15,
       ),
       TweenSequenceItem(
-        tween: Tween(begin: 1.2, end: 1.0).chain(CurveTween(curve: Curves.easeInOut)),
+        tween: Tween(begin: 1.2, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOut)),
         weight: 5,
       ),
       TweenSequenceItem(tween: ConstantTween(1.0), weight: 65),
@@ -70,7 +73,7 @@ class _StreakAnimationOverlayState extends State<StreakAnimationOverlay>
         setState(() {
           _readyToDismiss = true;
         });
-        
+
         // Auto-dismiss after another 2 seconds if user doesn't tap
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted && _readyToDismiss) {
@@ -105,7 +108,8 @@ class _StreakAnimationOverlayState extends State<StreakAnimationOverlay>
               children: [
                 // Darken background over time
                 Container(
-                  color: Colors.black.withValues(alpha: (_controller.value * 0.85).clamp(0.0, 1.0)),
+                  color: Colors.black.withValues(
+                      alpha: (_controller.value * 0.85).clamp(0.0, 1.0)),
                 ),
 
                 // Blur effect to focus entirely on the animation
@@ -134,60 +138,76 @@ class _StreakAnimationOverlayState extends State<StreakAnimationOverlay>
                           'STREAK INCREASED!',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2,
-                            fontSize: 22,
-                            color: Colors.white,
-                            shadows: [
-                              Shadow(color:AppColors.primary, offset: Offset(0, 1), blurRadius: 10),
-                              Shadow(color: Colors.black54, offset: Offset(0, 2), blurRadius: 4),
-                            ]
-                          ),
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 2,
+                              fontSize: 22,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                    color: AppColors.primary,
+                                    offset: Offset(0, 1),
+                                    blurRadius: 10),
+                                Shadow(
+                                    color: Colors.black54,
+                                    offset: Offset(0, 2),
+                                    blurRadius: 4),
+                              ]),
                         ),
                         const SizedBox(height: 20),
-                        Icon(
-                          Icons.local_fire_department,
-                          color: AppColors.warning,
-                          size: 72,
-                          shadows: const [
-                             Shadow(color:AppColors.primary, offset: Offset(0, 0), blurRadius: 15),
-                          ]
-                        ),
+                        Icon(Icons.local_fire_department,
+                            color: AppColors.warning,
+                            size: 72,
+                            shadows: const [
+                              Shadow(
+                                  color: AppColors.primary,
+                                  offset: Offset(0, 0),
+                                  blurRadius: 15),
+                            ]),
                         const SizedBox(height: 10),
                         Text(
                           '${widget.newStreak}',
                           style: const TextStyle(
-                            fontSize: 96,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            height: 1.0,
-                            shadows: [
-                              Shadow(color:AppColors.warning, offset: Offset(0, 0), blurRadius: 20),
-                              Shadow(color: Colors.black54, offset: Offset(0, 4), blurRadius: 8),
-                            ]
-                          ),
+                              fontSize: 96,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              height: 1.0,
+                              shadows: [
+                                Shadow(
+                                    color: AppColors.warning,
+                                    offset: Offset(0, 0),
+                                    blurRadius: 20),
+                                Shadow(
+                                    color: Colors.black54,
+                                    offset: Offset(0, 4),
+                                    blurRadius: 8),
+                              ]),
                         ),
                         const SizedBox(height: 14),
                         const Text(
                           'DAYS',
                           style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 6,
-                            fontSize: 18,
-                            color: Colors.white,
-                            shadows: [
-                              Shadow(color:AppColors.primary, offset: Offset(0, 1), blurRadius: 10),
-                              Shadow(color: Colors.black54, offset: Offset(0, 2), blurRadius: 4),
-                            ]
-                          ),
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 6,
+                              fontSize: 18,
+                              color: Colors.white,
+                              shadows: [
+                                Shadow(
+                                    color: AppColors.primary,
+                                    offset: Offset(0, 1),
+                                    blurRadius: 10),
+                                Shadow(
+                                    color: Colors.black54,
+                                    offset: Offset(0, 2),
+                                    blurRadius: 4),
+                              ]),
                         ),
-                        
+
                         // Tap to continue prompt
                         if (_readyToDismiss)
                           Padding(
                             padding: const EdgeInsets.only(top: 40),
                             child: AnimatedOpacity(
-                              opacity: 1.0, 
+                              opacity: 1.0,
                               duration: const Duration(milliseconds: 500),
                               child: Text(
                                 'Tap anywhere to continue',

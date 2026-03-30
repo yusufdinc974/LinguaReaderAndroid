@@ -60,8 +60,8 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search corrections…',
-              prefixIcon:
-                  const Icon(Icons.search, size: 20, color: AppColors.textSecondary),
+              prefixIcon: const Icon(Icons.search,
+                  size: 20, color: AppColors.textSecondary),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear, size: 18),
@@ -129,8 +129,7 @@ class _HistoryTabState extends ConsumerState<HistoryTab> {
 class _CorrectionList extends StatelessWidget {
   final List<CorrectionData> corrections;
   final HistoryNotifier notifier;
-  const _CorrectionList(
-      {required this.corrections, required this.notifier});
+  const _CorrectionList({required this.corrections, required this.notifier});
 
   @override
   Widget build(BuildContext context) {
@@ -151,8 +150,7 @@ class _CorrectionList extends StatelessWidget {
         final date = dates[dateIdx];
         if (isHeader) {
           return Padding(
-            padding:
-                const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
             child: Text(
               date,
               style: TextStyle(
@@ -218,8 +216,8 @@ class _CorrectionTile extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                     decoration: BoxDecoration(
                       color: _color.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(4),
@@ -264,9 +262,7 @@ class _CorrectionTile extends StatelessWidget {
               Text(
                 correction.explanation,
                 style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                    height: 1.4),
+                    fontSize: 12, color: AppColors.textSecondary, height: 1.4),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -284,8 +280,8 @@ class _CorrectionTile extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => _CorrectionDetailSheet(
-          correction: correction, notifier: notifier),
+      builder: (_) =>
+          _CorrectionDetailSheet(correction: correction, notifier: notifier),
     );
   }
 }
@@ -298,20 +294,17 @@ class _CorrectionDetailSheet extends StatefulWidget {
       {required this.correction, required this.notifier});
 
   @override
-  State<_CorrectionDetailSheet> createState() =>
-      _CorrectionDetailSheetState();
+  State<_CorrectionDetailSheet> createState() => _CorrectionDetailSheetState();
 }
 
-class _CorrectionDetailSheetState
-    extends State<_CorrectionDetailSheet> {
+class _CorrectionDetailSheetState extends State<_CorrectionDetailSheet> {
   late TextEditingController _noteCtrl;
   bool _saving = false;
 
   @override
   void initState() {
     super.initState();
-    _noteCtrl =
-        TextEditingController(text: widget.correction.userNote ?? '');
+    _noteCtrl = TextEditingController(text: widget.correction.userNote ?? '');
   }
 
   @override
@@ -360,7 +353,8 @@ class _CorrectionDetailSheetState
                     fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary)),
             const SizedBox(height: 16),
-            _DetailRow(label: 'Original',
+            _DetailRow(
+                label: 'Original',
                 child: Text(c.original,
                     style: const TextStyle(
                         decoration: TextDecoration.lineThrough,
@@ -368,17 +362,21 @@ class _CorrectionDetailSheetState
                         color: AppColors.textSecondary,
                         fontSize: 14))),
             const SizedBox(height: 12),
-            _DetailRow(label: 'Corrected',
+            _DetailRow(
+                label: 'Corrected',
                 child: Text(c.corrected,
                     style: const TextStyle(
                         color: AppColors.success,
                         fontWeight: FontWeight.w700,
                         fontSize: 14))),
             const SizedBox(height: 12),
-            _DetailRow(label: 'Explanation',
+            _DetailRow(
+                label: 'Explanation',
                 child: Text(c.explanation,
                     style: const TextStyle(
-                        color: AppColors.textPrimary, fontSize: 13, height: 1.5))),
+                        color: AppColors.textPrimary,
+                        fontSize: 13,
+                        height: 1.5))),
             const SizedBox(height: 16),
             const Text('My Notes',
                 style: TextStyle(
