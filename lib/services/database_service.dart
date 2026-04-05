@@ -750,7 +750,7 @@ class DatabaseService {
   // --- Recent PDFs ---
   Future<List<Map<String, dynamic>>> getRecentPdfs() async {
     final db = await database;
-    return await db.query('recent_pdfs', orderBy: 'last_opened DESC', limit: 5);
+    return await db.query('recent_pdfs', orderBy: 'last_opened DESC');
   }
 
   Future<bool> hasRecentPdfPath(String path) async {
@@ -782,6 +782,11 @@ class DatabaseService {
           'last_opened': DateTime.now().toIso8601String(),
         },
         conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteRecentPdf(int id) async {
+    final db = await database;
+    await db.delete('recent_pdfs', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<int> getWordListItemCount() async {

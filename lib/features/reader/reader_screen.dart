@@ -31,18 +31,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
   final DatabaseService _databaseService = DatabaseService();
   late final DateTime _sessionStartedAt;
 
-  PdfTextSelectionChangedDetails? _selectionDetails;
   File? _pdfFile;
-  Uint8List? _pdfBytesCache; // Cache small PDFs only
+  Uint8List? _pdfBytesCache;
   int _pdfFileSizeBytes = 0;
   bool _isLoading = true;
-  bool _pdfLoaded = false; // Track if PDF document is loaded in viewer
+  bool _pdfLoaded = false;
   Offset? _preservedScrollOffset;
   double? _preservedZoomLevel;
-  List<int> _selectedListIds = []; // Empty means ALL lists
+  List<int> _selectedListIds = [];
   List<Map<String, dynamic>> _availableLists = [];
-  String? _tempSelectedText;
-  bool _showSelectionActions = false;
   bool _isApplyingHighlights = false;
   bool _didShowLargePdfNotice = false;
   bool _allowLargePdfHighlights = false;
@@ -51,7 +48,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
   int _readerTutorialStep = 0;
   bool _readerTutorialVisible = false;
 
-  static const int _largePdfThresholdBytes = 25 * 1024 * 1024; // 25 MB
+  // Page navigation state
+  int _currentPage = 1;
+  int _totalPages = 0;
+
+  // Word tap selection state
+  PdfDocument? _extractionDocument;
+  final Map<int, List<TextLine>> _cachedTextLines = {};
+  final List<_SelectedWord> _selectedWords = [];
+  bool _showWordActions = false;
+
+  static const int _largePdfThresholdBytes = 10 * 1024 * 1024; // 10 MB
 
   @override
   void initState() {
@@ -63,6 +70,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   @override
   void dispose() {
     _pdfViewerController.dispose();
+    _extractionDocument?.dispose();
     super.dispose();
   }
 
@@ -94,17 +102,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final shouldShowTutorial =
           isSamplePdf && (widget.showTutorial || !completed);
 
-      // 2. Fetch available lists for filter
       _availableLists = await _databaseService.getWordLists();
-
-      // Initialize with all list IDs so UI matches behavior (All checked initially)
       _selectedListIds = _availableLists.map((l) => l['id'] as int).toList();
 
       if (mounted) {
         setState(() {
           _pdfFile = file;
           _isLoading = false;
-          _pdfLoaded = false; // Will be set true when document loads
+          _pdfLoaded = false;
           _didShowLargePdfNotice = false;
           _isApplyingHighlights = false;
           _allowLargePdfHighlights = false;
@@ -175,8 +180,166 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
-  /// Apply highlight overlays based on current filter selection
-  /// This uses controller annotations (not baked into PDF bytes)
+  // ── Text extraction for word tapping ──
+
+  /// Load extraction document for text extraction (lazily)
+  Future<void> _loadExtractionDocument() async {
+    if (_extractionDocument != null) return;
+    try {
+      final bytes = await _pdfFile!.readAsBytes();
+      _extractionDocument = PdfDocument(inputBytes: bytes);
+    } catch (e) {
+      debugPrint('Error loading extraction document: $e');
+    }
+  }
+
+  /// Get text lines for a given page (0-indexed), with caching
+  List<TextLine>? _getTextLinesForPage(int pageIndex) {
+    if (_cachedTextLines.containsKey(pageIndex)) {
+      return _cachedTextLines[pageIndex];
+    }
+    if (_extractionDocument == null) return null;
+    try {
+      final extractor = PdfTextExtractor(_extractionDocument!);
+      final textLines = extractor.extractTextLines(startPageIndex: pageIndex);
+      _cachedTextLines[pageIndex] = textLines;
+      return textLines;
+    } catch (e) {
+      debugPrint('Error extracting text lines for page $pageIndex: $e');
+      return null;
+    }
+  }
+
+  /// Handle tap on PDF page to find and select a word
+  void _handleWordTap(PdfGestureDetails details) {
+    if (details.pageNumber < 1) return;
+
+    final pageIndex = details.pageNumber - 1;
+    final tapPos = details.pagePosition;
+
+    if (tapPos.dx < 0 || tapPos.dy < 0) return;
+
+    final textLines = _getTextLinesForPage(pageIndex);
+    if (textLines == null || textLines.isEmpty) return;
+
+    // Find the word at the tap position
+    for (final textLine in textLines) {
+      for (final word in textLine.wordCollection) {
+        if (word.bounds.contains(tapPos)) {
+          final wordText = word.text.trim();
+          if (wordText.isEmpty) return;
+
+          _toggleWordSelection(wordText, word.bounds, pageIndex);
+          return;
+        }
+      }
+    }
+
+    // Tapped outside any word - clear selection if any
+    if (_selectedWords.isNotEmpty) {
+      _clearWordSelection();
+    }
+  }
+
+  void _toggleWordSelection(String word, Rect bounds, int pageIndex) {
+    setState(() {
+      // Check if word is already selected
+      final existingIndex = _selectedWords.indexWhere(
+        (sw) => sw.text == word && sw.pageIndex == pageIndex &&
+                (sw.bounds.left - bounds.left).abs() < 1.0,
+      );
+
+      if (existingIndex >= 0) {
+        // Deselect
+        _selectedWords.removeAt(existingIndex);
+        if (_selectedWords.isEmpty) {
+          _showWordActions = false;
+        }
+      } else {
+        // Select
+        _selectedWords.add(_SelectedWord(
+          text: word,
+          bounds: bounds,
+          pageIndex: pageIndex,
+        ));
+        _showWordActions = true;
+
+        if (_showReaderTutorial && _readerTutorialStep == 0) {
+          _advanceReaderTutorial(1);
+        }
+      }
+    });
+
+    // Update visual highlights for selected words
+    _updateWordSelectionHighlights();
+  }
+
+  void _clearWordSelection() {
+    // Remove selection highlight annotations
+    _removeSelectionHighlights();
+    setState(() {
+      _selectedWords.clear();
+      _showWordActions = false;
+    });
+  }
+
+  void _updateWordSelectionHighlights() {
+    // Remove old selection highlights
+    _removeSelectionHighlights();
+
+    // Add new highlights for all selected words
+    for (final sw in _selectedWords) {
+      final textLine = PdfTextLine(sw.bounds, sw.text, sw.pageIndex + 1);
+      final annotation = HighlightAnnotation(textBoundsCollection: [textLine]);
+      annotation.color = Colors.amber;
+      annotation.opacity = 0.5;
+      // Tag with a name so we can identify selection highlights
+      _pdfViewerController.addAnnotation(annotation);
+    }
+  }
+
+  void _removeSelectionHighlights() {
+    // Remove all highlight annotations that match our selection color/opacity
+    // We'll use amber color as the identifier for selection highlights
+    final allAnnotations = _pdfViewerController.getAnnotations();
+    final toRemove = <Annotation>[];
+    for (final ann in allAnnotations) {
+      if (ann is HighlightAnnotation &&
+          ann.color == Colors.amber &&
+          (ann.opacity - 0.5).abs() < 0.01) {
+        toRemove.add(ann);
+      }
+    }
+    for (final ann in toRemove) {
+      _pdfViewerController.removeAnnotation(ann);
+    }
+  }
+
+  String get _selectedText {
+    if (_selectedWords.isEmpty) return '';
+    // Sort by page, then by vertical position, then horizontal
+    final sorted = List<_SelectedWord>.from(_selectedWords)
+      ..sort((a, b) {
+        if (a.pageIndex != b.pageIndex) return a.pageIndex.compareTo(b.pageIndex);
+        if ((a.bounds.top - b.bounds.top).abs() > 5) return a.bounds.top.compareTo(b.bounds.top);
+        return a.bounds.left.compareTo(b.bounds.left);
+      });
+    return sorted.map((sw) => sw.text).join(' ');
+  }
+
+  Future<void> _copySelectedWords() async {
+    final text = _selectedText;
+    if (text.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Copied to clipboard')),
+    );
+    _clearWordSelection();
+  }
+
+  // ── Highlight overlays ──
+
   Future<void> _applyHighlightOverlays() async {
     if (!_pdfLoaded || _isApplyingHighlights) return;
     if (_isLargePdf && !_allowLargePdfHighlights) {
@@ -191,21 +354,17 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
 
     try {
-      // 1. CLEAR all existing overlay annotations first
       _pdfViewerController.removeAllAnnotations();
 
-      // If explicit empty selection, show NOTHING
       if (_selectedListIds.isEmpty) {
         return;
       }
 
-      // 2. Get words based on filter
       final wordsData =
           await _databaseService.getWordsWithColors(listIds: _selectedListIds);
 
       if (wordsData.isEmpty) return;
 
-      // 3. Convert to WordColor objects
       final words = wordsData.map((data) {
         final colorStr = data['color'] as String? ?? '0xFF2196F3';
         Color color;
@@ -230,18 +389,15 @@ class _ReaderScreenState extends State<ReaderScreen> {
         return WordColor(data['word'] as String, color);
       }).toList();
 
-      // 4. Find matches for all words with a single PDF load
       final matchesByWord = await PdfHighlightService.findTextForWords(
         pdfBytes,
         words.map((w) => w.word).toList(),
       );
 
-      // 5. Add overlay annotations for each word
       for (final wordColor in words) {
         final matches = matchesByWord[wordColor.word];
         if (matches == null || matches.isEmpty) continue;
 
-        // Group matches by page
         final Map<int, List<MatchedItem>> matchesByPage = {};
         for (final match in matches) {
           matchesByPage.putIfAbsent(match.pageIndex, () => []).add(match);
@@ -270,7 +426,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  /// Add highlight overlay for a single word
   Future<void> _addWordHighlightOverlay(WordColor wordColor) async {
     if (wordColor.word.trim().isEmpty) return;
     if (_isLargePdf && !_allowLargePdfHighlights) {
@@ -284,13 +439,11 @@ class _ReaderScreenState extends State<ReaderScreen> {
       final matches =
           await PdfHighlightService.findText(pdfBytes, wordColor.word);
 
-      // Group matches by page
       final Map<int, List<MatchedItem>> matchesByPage = {};
       for (final match in matches) {
         matchesByPage.putIfAbsent(match.pageIndex, () => []).add(match);
       }
 
-      // Add annotation for each page
       for (final entry in matchesByPage.entries) {
         final pageIndex = entry.key;
         final pageMatches = entry.value;
@@ -310,282 +463,58 @@ class _ReaderScreenState extends State<ReaderScreen> {
     }
   }
 
-  void _clearSelectionState() {
-    _pdfViewerController.clearSelection();
-    setState(() {
-      _selectionDetails = null;
-      _tempSelectedText = null;
-      _showSelectionActions = false;
-    });
-  }
+  // ── Page navigation ──
 
-  Future<void> _copySelectedText() async {
-    final text = _tempSelectedText?.trim();
-    if (text == null || text.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: text));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied to clipboard')),
-    );
-    _clearSelectionState();
-  }
+  void _showGoToPageDialog() {
+    if (_totalPages == 0) return;
+    final controller = TextEditingController();
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (_pdfFile == null) {
-      return Scaffold(
-        appBar: AppBar(title: const Text('Error')),
-        body: const Center(child: Text('Failed to load PDF')),
-      );
-    }
-
-    return PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (bool didPop, dynamic result) async {
-          if (didPop) return;
-
-          final spentMinutes =
-              DateTime.now().difference(_sessionStartedAt).inMinutes;
-          if (spentMinutes > 0) {
-            try {
-              final bumpedStreak = await _databaseService.logLearningActivity(
-                readingMinutesDelta: spentMinutes,
-              );
-              if (bumpedStreak && mounted) {
-                final streakData =
-                    await _databaseService.getLearningStreakStats();
-                if (mounted) {
-                  await StreakAnimationOverlay.show(context,
-                      newStreak: streakData['current'] ?? 0);
-                }
-              }
-            } catch (_) {}
-          }
-
-          if (context.mounted) {
-            Navigator.of(context).pop();
-          }
-        },
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('Reader'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () async {
-                  await _loadPdf();
-                  // Highlights will be applied when document loads
-                },
-              ),
-              IconButton(
-                icon: Icon(_selectedListIds.isEmpty
-                    ? Icons.filter_alt_off
-                    : Icons.filter_alt),
-                onPressed: _showHighlightFilterDialog,
-              ),
-            ],
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Go to Page'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: '1 - $_totalPages',
+            border: const OutlineInputBorder(),
           ),
-          body: Stack(
-            children: [
-              SfPdfViewer.file(
-                _pdfFile!,
-                key: ValueKey(widget.filePath), // Stable key based on file path
-                controller: _pdfViewerController,
-                pageLayoutMode: _isLargePdf
-                    ? PdfPageLayoutMode.single
-                    : PdfPageLayoutMode.continuous,
-                interactionMode: _isLargePdf
-                    ? PdfInteractionMode.pan
-                    : PdfInteractionMode.selection,
-                pageSpacing: _isLargePdf ? 0 : 4,
-                canShowScrollHead: !_isLargePdf,
-                canShowScrollStatus: !_isLargePdf,
-                canShowPaginationDialog: !_isLargePdf,
-                canShowSignaturePadDialog: !_isLargePdf,
-                enableDocumentLinkAnnotation: !_isLargePdf,
-                enableHyperlinkNavigation: !_isLargePdf,
-                canShowHyperlinkDialog: !_isLargePdf,
-                enableDoubleTapZooming: !_isLargePdf,
-                useFilePathOnAndroid: true,
-                enableFullTextExtraction: false,
-                maxRenderPixels: _isLargePdf ? 2000000 : 6000000,
-                maxDevicePixelRatio: 2.0,
-                initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
-                initialZoomLevel: _preservedZoomLevel ?? 1.0,
-                maxZoomLevel: _isLargePdf ? 2 : 3,
-                enableTextSelection: true,
-                canShowTextSelectionMenu: false,
-                onDocumentLoaded: (PdfDocumentLoadedDetails details) {
-                  // Document is now ready for annotations
-                  _pdfLoaded = true;
-                  if (_isLargePdf) {
-                    _maybeShowLargePdfNotice();
-                    return;
-                  }
-                  // Apply initial highlights
-                  _applyHighlightOverlays();
-                },
-                onTextSelectionChanged:
-                    (PdfTextSelectionChangedDetails details) {
-                  if (details.selectedText == null ||
-                      details.selectedText!.trim().isEmpty) {
-                    setState(() {
-                      _selectionDetails = null;
-                      _tempSelectedText = null;
-                      _showSelectionActions = false;
-                    });
-                    return;
-                  }
-
-                  final text = details.selectedText!.trim();
-                  if (text.isNotEmpty) {
-                    setState(() {
-                      _selectionDetails = details;
-                      _tempSelectedText = text;
-                      _showSelectionActions = false;
-                    });
-                    if (_showReaderTutorial && _readerTutorialStep == 0) {
-                      _advanceReaderTutorial(1);
-                    }
-                  }
-                },
-              ),
-              if (_selectionDetails != null)
-                Positioned(
-                  left: 16,
-                  right: 16,
-                  bottom: 32,
-                  child: Card(
-                    elevation: 0,
-                    color: Theme.of(context).colorScheme.surface,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      side: const BorderSide(color: AppColors.border, width: 2),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: _showSelectionActions
-                          ? Row(
-                              children: [
-                                Expanded(
-                                  child: _buildLargeActionButton(
-                                    icon: Icons.translate,
-                                    label: 'Translate',
-                                    onTap: () {
-                                      final selected =
-                                          _tempSelectedText?.trim();
-                                      if (selected == null ||
-                                          selected.isEmpty) {
-                                        return;
-                                      }
-                                      if (_showReaderTutorial &&
-                                          _readerTutorialStep == 2) {
-                                        _advanceReaderTutorial(3);
-                                      }
-                                      _showTranslation(selected);
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _buildLargeActionButton(
-                                    icon: Icons.copy,
-                                    label: 'Copy',
-                                    onTap: _copySelectedText,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _buildLargeActionButton(
-                                    icon: Icons.close,
-                                    label: 'Cancel',
-                                    onTap: _clearSelectionState,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Selection ready (${(_tempSelectedText ?? '').length} chars)',
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                const FoxSpriteAnimator(
-                                  animation: FoxAnimation.walkWest,
-                                  size: 34,
-                                ),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    setState(
-                                        () => _showSelectionActions = true);
-                                    if (_showReaderTutorial &&
-                                        _readerTutorialStep == 1) {
-                                      _advanceReaderTutorial(2);
-                                    }
-                                  },
-                                  icon: const Icon(Icons.touch_app, size: 20),
-                                  label: const Text('Actions'),
-                                  style: ElevatedButton.styleFrom(
-                                    minimumSize: const Size(132, 52),
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 16),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                OutlinedButton(
-                                  onPressed: _clearSelectionState,
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size(88, 52),
-                                  ),
-                                  child: const Text('Clear'),
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-                ),
-              if (_showReaderTutorial && _isSamplePdf && _readerTutorialVisible)
-                Positioned(
-                  left: 12,
-                  right: 12,
-                  top: 12,
-                  child: SafeArea(
-                    bottom: false,
-                    child: _buildReaderTutorialCard(),
-                  ),
-                ),
-            ],
+          onSubmitted: (value) {
+            _navigateToPage(value);
+            Navigator.pop(context);
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
           ),
-        ));
-  }
-
-  Widget _buildLargeActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-  }) {
-    return ElevatedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 18),
-      label: Text(label, overflow: TextOverflow.ellipsis),
-      style: ElevatedButton.styleFrom(
-        minimumSize: const Size.fromHeight(56),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+          ElevatedButton(
+            onPressed: () {
+              _navigateToPage(controller.text);
+              Navigator.pop(context);
+            },
+            child: const Text('Go'),
+          ),
+        ],
       ),
     );
   }
+
+  void _navigateToPage(String value) {
+    final pageNum = int.tryParse(value.trim());
+    if (pageNum == null || pageNum < 1 || pageNum > _totalPages) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please enter a valid page number (1 - $_totalPages)')),
+      );
+      return;
+    }
+    _pdfViewerController.jumpToPage(pageNum);
+  }
+
+  // ── Highlight filter dialog ──
 
   Future<bool> _confirmLargePdfHighlights() async {
     if (!mounted) return false;
@@ -620,7 +549,6 @@ class _ReaderScreenState extends State<ReaderScreen> {
       }
       _allowLargePdfHighlights = true;
     }
-    // Clone current selection to temp set
     final Set<int> tempSelected = _selectedListIds.toSet();
 
     await showDialog(
@@ -689,11 +617,14 @@ class _ReaderScreenState extends State<ReaderScreen> {
       },
     );
 
-    // Apply new filter (clear old annotations and add new ones)
     await _applyHighlightOverlays();
   }
 
   void _showTranslation(String text) async {
+    if (_showReaderTutorial && _readerTutorialStep == 1) {
+      _advanceReaderTutorial(2);
+    }
+
     final result = await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -711,27 +642,294 @@ class _ReaderScreenState extends State<ReaderScreen> {
       ),
     );
 
-    // Clear selection UI
-    _clearSelectionState();
+    _clearWordSelection();
 
-    // If word was saved, add instant highlight overlay
     if (result is WordColor) {
       await _addWordHighlightOverlay(result);
-      if (_showReaderTutorial && _readerTutorialStep >= 3) {
+      if (_showReaderTutorial && _readerTutorialStep >= 2) {
         await _completeReaderTutorial();
       }
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_pdfFile == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Error')),
+        body: const Center(child: Text('Failed to load PDF')),
+      );
+    }
+
+    return PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, dynamic result) async {
+          if (didPop) return;
+
+          final spentMinutes =
+              DateTime.now().difference(_sessionStartedAt).inMinutes;
+          if (spentMinutes > 0) {
+            try {
+              final bumpedStreak = await _databaseService.logLearningActivity(
+                readingMinutesDelta: spentMinutes,
+              );
+              if (bumpedStreak && mounted) {
+                final streakData =
+                    await _databaseService.getLearningStreakStats();
+                if (mounted) {
+                  await StreakAnimationOverlay.show(context,
+                      newStreak: streakData['current'] ?? 0);
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: Scaffold(
+          appBar: AppBar(
+            title: GestureDetector(
+              onTap: _showGoToPageDialog,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _totalPages > 0
+                        ? 'Page $_currentPage / $_totalPages'
+                        : 'Reader',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  if (_totalPages > 0) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.edit, size: 14),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () async {
+                  _cachedTextLines.clear();
+                  _extractionDocument?.dispose();
+                  _extractionDocument = null;
+                  await _loadPdf();
+                },
+              ),
+              IconButton(
+                icon: Icon(_selectedListIds.isEmpty
+                    ? Icons.filter_alt_off
+                    : Icons.filter_alt),
+                onPressed: _showHighlightFilterDialog,
+              ),
+            ],
+          ),
+          body: Stack(
+            children: [
+              SfPdfViewer.file(
+                _pdfFile!,
+                key: ValueKey(widget.filePath),
+                controller: _pdfViewerController,
+                pageLayoutMode: _isLargePdf
+                    ? PdfPageLayoutMode.single
+                    : PdfPageLayoutMode.continuous,
+                interactionMode: PdfInteractionMode.selection,
+                pageSpacing: _isLargePdf ? 0 : 4,
+                canShowScrollHead: true,
+                canShowScrollStatus: true,
+                canShowPaginationDialog: true,
+                canShowSignaturePadDialog: !_isLargePdf,
+                enableDocumentLinkAnnotation: !_isLargePdf,
+                enableHyperlinkNavigation: !_isLargePdf,
+                canShowHyperlinkDialog: !_isLargePdf,
+                enableDoubleTapZooming: true,
+                useFilePathOnAndroid: true,
+                enableFullTextExtraction: false,
+                maxRenderPixels: _isLargePdf ? 1500000 : 6000000,
+                maxDevicePixelRatio: _isLargePdf ? 1.5 : 2.0,
+                initialScrollOffset: _preservedScrollOffset ?? Offset.zero,
+                initialZoomLevel: _preservedZoomLevel ?? 1.0,
+                maxZoomLevel: _isLargePdf ? 2 : 3,
+                enableTextSelection: true,
+                canShowTextSelectionMenu: false,
+                onDocumentLoaded: (PdfDocumentLoadedDetails details) async {
+                  _pdfLoaded = true;
+                  setState(() {
+                    _totalPages = details.document.pages.count;
+                  });
+
+                  // Load extraction document for word tapping
+                  await _loadExtractionDocument();
+
+                  if (_isLargePdf) {
+                    _maybeShowLargePdfNotice();
+                    return;
+                  }
+                  _applyHighlightOverlays();
+                },
+                onPageChanged: (PdfPageChangedDetails details) {
+                  setState(() {
+                    _currentPage = details.newPageNumber;
+                  });
+                },
+                onTap: (PdfGestureDetails details) {
+                  _handleWordTap(details);
+                },
+                onTextSelectionChanged:
+                    (PdfTextSelectionChangedDetails details) {
+                  // Keep long-press selection as fallback
+                  if (details.selectedText != null &&
+                      details.selectedText!.trim().isNotEmpty) {
+                    final text = details.selectedText!.trim();
+                    // Add the selected text as if it were tapped words
+                    setState(() {
+                      _selectedWords.clear();
+                      _selectedWords.add(_SelectedWord(
+                        text: text,
+                        bounds: Rect.zero,
+                        pageIndex: _currentPage - 1,
+                      ));
+                      _showWordActions = true;
+                    });
+                  }
+                },
+              ),
+
+              // Word action bar
+              if (_showWordActions && _selectedWords.isNotEmpty)
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: 32,
+                  child: Card(
+                    elevation: 0,
+                    color: Theme.of(context).colorScheme.surface,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      side: const BorderSide(color: AppColors.border, width: 2),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Selected text preview
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  _selectedText,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                              if (_selectedWords.length > 1)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '${_selectedWords.length} words',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildLargeActionButton(
+                                  icon: Icons.translate,
+                                  label: 'Translate',
+                                  onTap: () {
+                                    final selected = _selectedText;
+                                    if (selected.isEmpty) return;
+                                    _showTranslation(selected);
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildLargeActionButton(
+                                  icon: Icons.copy,
+                                  label: 'Copy',
+                                  onTap: _copySelectedWords,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _buildLargeActionButton(
+                                  icon: Icons.close,
+                                  label: 'Cancel',
+                                  onTap: _clearWordSelection,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+              if (_showReaderTutorial && _isSamplePdf && _readerTutorialVisible)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  top: 12,
+                  child: SafeArea(
+                    bottom: false,
+                    child: _buildReaderTutorialCard(),
+                  ),
+                ),
+            ],
+          ),
+        ));
+  }
+
+  Widget _buildLargeActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label, overflow: TextOverflow.ellipsis),
+      style: ElevatedButton.styleFrom(
+        minimumSize: const Size.fromHeight(56),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      ),
+    );
   }
 
   Widget _buildReaderTutorialCard() {
     final steps = [
       _TutorialStep(
         imagePath: 'assets/fox_tutorial/casual.png',
-        message: 'Hold on a word to select it.',
-      ),
-      _TutorialStep(
-        imagePath: 'assets/fox_tutorial/shy.png',
-        message: 'Nice! Tap Actions to reveal options.',
+        message: 'Tap any word to select it. Tap more words to select multiple!',
       ),
       _TutorialStep(
         imagePath: 'assets/fox_tutorial/joyful.png',
@@ -812,5 +1010,17 @@ class _TutorialStep {
   const _TutorialStep({
     required this.imagePath,
     required this.message,
+  });
+}
+
+class _SelectedWord {
+  final String text;
+  final Rect bounds;
+  final int pageIndex;
+
+  const _SelectedWord({
+    required this.text,
+    required this.bounds,
+    required this.pageIndex,
   });
 }
