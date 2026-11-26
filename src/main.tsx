@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { installApi } from './platform/api';
 import { installBackButton } from './lib/back';
+import { installNativeSpeech } from './platform/speech';
+import { isNative } from './platform/storage';
 import '@desktop/index.css';
 import './mobile.css';
 
@@ -14,6 +16,8 @@ const realDpr = window.devicePixelRatio || 1;
 Object.defineProperty(window, 'devicePixelRatio', { get: () => Math.min(realDpr, 2), configurable: true });
 
 installBackButton();
+// Android's WebView can't speak: give the desktop's speech code the phone's voices
+if (isNative) installNativeSpeech();
 
 // The desktop components read their data through window.electronAPI: install
 // the phone's version (SQLite in app storage) before anything renders.

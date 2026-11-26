@@ -143,11 +143,18 @@ export class Db {
     }
 }
 
+let sqlModule: ReturnType<typeof initSqlJs> | null = null;
+/** The sql.js module (one copy of the WebAssembly for the whole app). */
+export function sqlJs(wasmBinary?: ArrayBuffer) {
+    sqlModule ??= initSqlJs(wasmBinary ? { wasmBinary } : { locateFile: () => wasmUrl });
+    return sqlModule;
+}
+
 let opened: Promise<Db> | null = null;
 
 export function openDb(): Promise<Db> {
     opened ??= (async () => {
-        const SQL = await initSqlJs({ locateFile: () => wasmUrl });
+        const SQL = await sqlJs();
         const stored = await readFile(DB_FILE);
         const sqlDb = new SQL.Database(stored ? base64ToBytes(stored) : undefined);
         const db = new Db(sqlDb, bytes => writeFile(DB_FILE, bytesToBase64(bytes)));
@@ -161,6 +168,6 @@ export function openDb(): Promise<Db> {
 
 /** For tests: a database that lives only in memory. */
 export async function memoryDb(sqlWasm?: ArrayBuffer): Promise<Db> {
-    const SQL = await initSqlJs(sqlWasm ? { wasmBinary: sqlWasm } : { locateFile: () => wasmUrl });
+    const SQL = await sqlJs(sqlWasm);
     return new Db(new SQL.Database(), async () => { });
 }

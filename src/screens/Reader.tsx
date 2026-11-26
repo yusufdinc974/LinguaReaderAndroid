@@ -9,8 +9,12 @@
 // are empty slots of the right size, so long books open fast and scroll smoothly.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
+import { BookOpenText, Check, ChevronLeft, ChevronRight, GalleryVertical, Hash, Highlighter, Languages, ListTree, Loader2, Maximize2, MoreVertical, ScanText, X } from 'lucide-react';
 import { destroyDoc, displayName, openReaderDoc, pageSize, type ReaderDoc } from '@desktop/lib/document';
+import { getOcrMode, setOcrMode, type OcrMode } from '@desktop/lib/ocr';
+import { getLearnLang, langFamily } from '@desktop/lib/speech';
+import { DEFAULT_LIST_COLOR } from '@desktop/lib/words';
+import Dialog from '@desktop/components/Dialog';
 import { createHighlighter } from '@desktop/lib/highlight';
 import { cleanSelection, wordKey } from '@desktop/lib/words';
 import { selectionContext } from '@desktop/lib/context';
@@ -21,6 +25,7 @@ import WordCard, { type WordCardState } from '@desktop/components/WordCard';
 import type { WordList } from '@desktop/types';
 import { selectWordAt } from '../lib/tapWord';
 import { useBack } from '../lib/back';
+import Sheet, { SheetItem } from '../components/Sheet';
 
 export interface OpenBook {
     name: string;
@@ -52,6 +57,8 @@ function bottomAnchor() {
 
 const dist = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
 
+type Panel = 'menu' | 'toc' | 'filter' | 'lang' | 'ocr' | 'goto' | null;
+
 export default function Reader({ book, onClose }: Props) {
     const [doc, setDoc] = useState<ReaderDoc | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -66,6 +73,18 @@ export default function Reader({ book, onClose }: Props) {
     const [lists, setLists] = useState<WordList[]>([]);
     const [familiarity, setFamiliarity] = useState<Record<string, number>>({});
     const [wordColors, setWordColors] = useState<Record<string, string>>({});
+    /** Other forms of saved words ("mangé" → "manger"), from installed dictionaries */
+    const [formOf, setFormOf] = useState<Record<string, string>>({});
+    // [] = highlight all lists, [-1] = none, otherwise the chosen ids (as desktop)
+    const [shownListIds, setShownListIds] = useState<number[]>([]);
+    const [ocrMode, setOcrModeState] = useState<OcrMode>(getOcrMode);
+    const [ocrVersion, setOcrVersion] = useState(0);
+    /** Images: one long strip (webtoons) rather than a page at a time */
+    const [continuous, setContinuous] = useState(true);
+    /** Focus: the bars are hidden */
+    const [focus, setFocus] = useState(false);
+    const [panel, setPanel] = useState<Panel>(null);
+    const [gotoValue, setGotoValue] = useState('');
 
     const [card, setCard] = useState<WordCardState | null>(null);
     const [level, setLevel] = useState(1);
@@ -80,6 +99,11 @@ export default function Reader({ book, onClose }: Props) {
     /** Scroll position to apply right after a zoom change is drawn. */
     const pendingScroll = useRef<{ left: number; top: number } | null>(null);
     const pinching = useRef(false);
+    const colorsSeq = useRef(0);
+    const pageRef = useRef(page);
+    pageRef.current = page;
+    /** EPUB: where to scroll once the chapter is drawn */
+    const epubScroll = useRef<{ fraction?: number; fragment?: string } | null>(null);
 
     useEffect(() => localStorage.setItem('epubZoom', String(epubZoom)), [epubZoom]);
     useEffect(() => localStorage.setItem('targetLang', targetLang), [targetLang]);
@@ -89,8 +113,9 @@ export default function Reader({ book, onClose }: Props) {
         window.getSelection()?.removeAllRanges();
     }, []);
 
-    // Back: closes the word card first, then the book
+    // Back: closes a panel or the word card first, then leaves focus, then closes the book
     useBack(onClose);
+    useBack(() => setFocus(false), focus);
     useBack(closeCard, card !== null);
 
     // ---------- data ----------
@@ -100,19 +125,43 @@ export default function Reader({ book, onClose }: Props) {
         for (const f of await window.electronAPI.getAllWordFamiliarity()) map[f.word_lower] = f.familiarity_level;
         setFamiliarity(map);
     }, []);
-    const loadColors = useCallback(async () => {
+    // Colours of saved words, and their other forms from the dictionaries (as desktop Reader)
+    const loadColors = useCallback(async (ids: number[]) => {
+        const rows = await window.electronAPI.getWordColors(ids.length > 0 ? ids : undefined);
         const map: Record<string, string> = {};
-        for (const r of await window.electronAPI.getWordColors()) map[r.word_lower] ??= r.color;
+        for (const r of rows) map[r.word_lower] ??= r.color;
         setWordColors(map);
+        const seq = ++colorsSeq.current;
+        const ask: { key: string; lang: string }[] = [];
+        const seen = new Set<string>();
+        for (const r of rows) {
+            const lang = langFamily(r.source_language) ?? langFamily(getLearnLang());
+            const langs = lang === 'zh' || lang === 'ja' ? (/^\p{Script=Han}+$/u.test(r.word_lower) ? ['ja', 'zh'] : [lang]) : lang ? [lang] : [];
+            for (const l of langs) if (!seen.has(`${l}:${r.word_lower}`)) {
+                seen.add(`${l}:${r.word_lower}`);
+                ask.push({ key: r.word_lower, lang: l });
+            }
+        }
+        const pairs = ask.length ? await window.electronAPI.dictForms(ask).catch(() => [] as [string, string][]) : [];
+        if (seq !== colorsSeq.current) return;
+        const forms: Record<string, string> = {};
+        for (const [f, b] of pairs) if (!(f in map) && !(f in forms)) forms[f] = b;
+        setFormOf(forms);
     }, []);
 
     useEffect(() => {
         loadLists();
         loadFamiliarity();
-        loadColors();
-    }, [loadLists, loadFamiliarity, loadColors]);
+    }, [loadLists, loadFamiliarity]);
+    useEffect(() => {
+        loadColors(shownListIds);
+    }, [loadColors, shownListIds]);
 
-    const highlighter = useMemo(() => createHighlighter(wordColors), [wordColors]);
+    const highlighter = useMemo(() => {
+        const all: Record<string, string> = {};
+        for (const [f, b] of Object.entries(formOf)) if (wordColors[b]) all[f] = wordColors[b];
+        return createHighlighter(Object.assign(all, wordColors));
+    }, [wordColors, formOf]);
 
     // ---------- document ----------
     useEffect(() => {
@@ -127,6 +176,16 @@ export default function Reader({ book, onClose }: Props) {
                 await window.electronAPI.addRecentPdf(book.name, book.path);
                 if (next.kind === 'pdf') setBase(await pageSize(next, 1));
                 const last = Math.min(Math.max(1, progress?.last_page ?? 1), next.numPages);
+                if (next.kind === 'images') {
+                    // Long strips read best as one scroll; comics a page at a time (as desktop)
+                    const stored = localStorage.getItem(`continuous:${next.hash}`);
+                    const first = await pageSize(next, 1);
+                    setContinuous(stored !== null ? stored === '1' : first.height > first.width * 2);
+                }
+                if (next.kind === 'epub') {
+                    const [ch, frac] = (localStorage.getItem(`epubpos:${next.hash}`) ?? '').split(':').map(Number);
+                    epubScroll.current = { fraction: ch === last && frac > 0 && frac <= 1 ? frac : 0 };
+                }
                 startPage.current = last;
                 setPage(last);
                 setDoc(next);
@@ -152,6 +211,8 @@ export default function Reader({ book, onClose }: Props) {
     }, [doc]);
 
     const isPdf = doc?.kind === 'pdf';
+    /** Images shown a page at a time (swipe to turn) */
+    const paged = doc?.kind === 'images' && !continuous;
     const fit = base && viewW ? (viewW - PAD * 2) / base.width : 1;
     const scale = fit * zoom;
     const slotW = base ? base.width * scale : 0;
@@ -176,7 +237,7 @@ export default function Reader({ book, onClose }: Props) {
 
     // Open where the reader left off
     useLayoutEffect(() => {
-        if (!doc || restored.current || doc.kind === 'epub' || (isPdf && !slotH)) return;
+        if (!doc || restored.current || doc.kind === 'epub' || paged || (isPdf && !slotH)) return;
         const el = scrollRef.current;
         if (!el) return;
         el.scrollTop = pageTop(startPage.current);
@@ -192,14 +253,29 @@ export default function Reader({ book, onClose }: Props) {
     }, [doc, isPdf, slotH, pageTop]);
 
     useEffect(() => {
-        if (doc?.kind === 'epub') restored.current = true;
-    }, [doc]);
+        if (doc?.kind === 'epub' || paged) restored.current = true;
+    }, [doc, paged]);
 
     // Current page follows the scroll position
     useEffect(() => {
         const el = scrollRef.current;
-        if (!el || !doc || doc.kind === 'epub') return;
+        if (!el || !doc || paged) return;
         let raf = 0;
+        let posTimer: ReturnType<typeof setTimeout> | undefined;
+        if (doc.kind === 'epub') {
+            // Keep the place inside the chapter, per book (as desktop)
+            const onEpubScroll = () => {
+                const max = el.scrollHeight - el.clientHeight;
+                const value = `${pageRef.current}:${max > 0 ? (el.scrollTop / max).toFixed(4) : 0}`;
+                clearTimeout(posTimer);
+                posTimer = setTimeout(() => localStorage.setItem(`epubpos:${doc.hash}`, value), 250);
+            };
+            el.addEventListener('scroll', onEpubScroll, { passive: true });
+            return () => {
+                el.removeEventListener('scroll', onEpubScroll);
+                clearTimeout(posTimer);
+            };
+        }
         const onScroll = () => {
             if (raf) return;
             raf = requestAnimationFrame(() => {
@@ -213,7 +289,7 @@ export default function Reader({ book, onClose }: Props) {
             el.removeEventListener('scroll', onScroll);
             cancelAnimationFrame(raf);
         };
-    }, [doc, pageAt]);
+    }, [doc, pageAt, paged]);
 
     // Save the reading position
     useEffect(() => {
@@ -222,17 +298,41 @@ export default function Reader({ book, onClose }: Props) {
         return () => clearTimeout(t);
     }, [doc, page, book.path]);
 
-    const goTo = useCallback((n: number) => {
+    const goTo = useCallback((n: number, fragment?: string) => {
         if (!doc) return;
         const p = Math.min(Math.max(1, n), doc.numPages);
         closeCard();
         if (doc.kind === 'epub') {
+            epubScroll.current = fragment ? { fragment } : { fraction: 0 };
+            if (p === page) applyEpubScroll();
+            else setPage(p);
+        } else if (paged) {
             setPage(p);
-            scrollRef.current?.scrollTo({ top: 0 });
+            setZoom(1);
+            scrollRef.current?.scrollTo({ top: 0, left: 0 });
         } else {
             scrollRef.current?.scrollTo({ top: pageTop(p), behavior: Math.abs(p - page) <= 1 ? 'smooth' : 'auto' });
         }
-    }, [doc, page, pageTop, closeCard]);
+    }, [doc, page, pageTop, closeCard, paged]);
+
+    /** EPUB: after a chapter is drawn, go to the saved place or the linked spot. */
+    function applyEpubScroll() {
+        const box = scrollRef.current;
+        const p = epubScroll.current;
+        if (!box || !p) return;
+        epubScroll.current = null;
+        if (p.fragment) {
+            const el = box.querySelector<HTMLElement>(`#${CSS.escape(`epub-${p.fragment}`)}`);
+            if (el) {
+                box.scrollTo({ top: el.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 24 });
+                return;
+            }
+        }
+        const frac = p.fraction ?? 0;
+        const go = () => box.scrollTo({ top: frac * (box.scrollHeight - box.clientHeight) });
+        go();
+        if (frac > 0) setTimeout(go, 300);
+    }
 
     // ---------- pinch to zoom ----------
     // While the fingers move, the drawn pages are only stretched (cheap); when
@@ -334,11 +434,15 @@ export default function Reader({ book, onClose }: Props) {
         setCard({ text, translation: '', loading: true, failed: false, context, anchor: bottomAnchor() });
         const [existing, result] = await Promise.allSettled([window.electronAPI.getWordByLower(key), translateText(text, targetLang)]);
         if (n !== seq.current) return;
-        setSavedWordId(existing.status === 'fulfilled' ? existing.value?.id ?? null : null);
+        const savedId = existing.status === 'fulfilled' ? existing.value?.id ?? null : null;
+        setSavedWordId(savedId);
+        // A form of a saved word ("mangé" when "manger" is saved)
+        const formBase = savedId === null ? formOf[key] : undefined;
+        const savedAs = formBase ? { word: formBase, level: familiarity[formBase] ?? 1 } : undefined;
         setCard(c => c && (result.status === 'fulfilled'
-            ? { ...c, loading: false, translation: result.value.translatedText, source: result.value.source, detectedLanguage: result.value.detectedLanguage }
-            : { ...c, loading: false, failed: true }));
-    }, [familiarity, targetLang]);
+            ? { ...c, loading: false, translation: result.value.translatedText, source: result.value.source, detectedLanguage: result.value.detectedLanguage, savedAs }
+            : { ...c, loading: false, failed: true, savedAs }));
+    }, [familiarity, targetLang, formOf]);
 
     const onTouchStart = (e: React.TouchEvent) => {
         const t = e.touches[0];
@@ -350,7 +454,13 @@ export default function Reader({ book, onClose }: Props) {
         touch.current = null;
         if (!start || pinching.current) return;
         const t = e.changedTouches[0];
-        const moved = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+        const dx = t.clientX - start.x, dy = t.clientY - start.y;
+        const moved = Math.hypot(dx, dy);
+        // Comics a page at a time: a sideways swipe turns the page (when not zoomed in)
+        if (paged && zoom <= 1.01 && Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 2 && Date.now() - start.t < 600) {
+            goTo(page + (dx < 0 ? 1 : -1));
+            return;
+        }
         // A tap (not a scroll, and not a long press, which makes its own selection)
         if (moved > 10 || Date.now() - start.t > 350) return;
         // Buttons and links in the book (EPUB "Next chapter", footnotes) keep working
@@ -360,8 +470,11 @@ export default function Reader({ book, onClose }: Props) {
         if (range) {
             e.preventDefault();
             showCard(range);
-        } else {
+        } else if (card) {
             closeCard();
+        } else {
+            // A tap away from words shows or hides the bars
+            setFocus(f => !f);
         }
     };
 
@@ -396,7 +509,7 @@ export default function Reader({ book, onClose }: Props) {
         await window.electronAPI.setWordFamiliarity(key, level, card.translation);
         setFamiliarity(prev => ({ ...prev, [key]: level }));
         setSavedWordId(wordId);
-        await loadColors();
+        await loadColors(shownListIds);
         closeCard();
     };
 
@@ -416,7 +529,7 @@ export default function Reader({ book, onClose }: Props) {
             return next;
         });
         setSavedWordId(null);
-        await loadColors();
+        await loadColors(shownListIds);
         closeCard();
     };
 
@@ -446,7 +559,7 @@ export default function Reader({ book, onClose }: Props) {
     } else if (doc.kind === 'epub') {
         body = (
             <div ref={contentRef} className="px-3 py-4 origin-top-left" style={{ background: 'var(--surface)', minHeight: '100%' }}>
-                <EpubView doc={doc} chapter={page} scale={epubZoom * EPUB_SCALE} highlighter={highlighter} onNavigate={c => goTo(c)} />
+                <EpubView doc={doc} chapter={page} scale={epubZoom * EPUB_SCALE} highlighter={highlighter} onNavigate={goTo} onRendered={applyEpubScroll} />
             </div>
         );
     } else if (doc.kind === 'pdf') {
@@ -461,42 +574,74 @@ export default function Reader({ book, onClose }: Props) {
                         className="absolute flex justify-center"
                         style={{ top: PAD + (n - 1) * (slotH + GAP), left: PAD, width: slotW, height: slotH }}
                     >
-                        <PageView doc={doc} pageNum={n} scale={scale} highlighter={highlighter} ocrMode="off" ocrVersion={0} />
+                        <PageView doc={doc} pageNum={n} scale={scale} highlighter={highlighter} ocrMode={ocrMode} ocrVersion={ocrVersion} />
                     </div>
                 ))}
             </div>
         );
+    } else if (paged) {
+        // Comics: one page, fit to the width; swipe sideways to turn
+        body = (
+            <div ref={contentRef} className="flex flex-col items-center" style={{ width: Math.max(viewW, viewW * zoom), padding: `${PAD}px 0` }}>
+                <PageView key={`${doc.hash}-${page}`} doc={doc} pageNum={page} scale={((viewW - PAD * 2) / 600) * zoom} highlighter={highlighter} ocrMode={ocrMode} ocrVersion={ocrVersion} seamless />
+            </div>
+        );
     } else {
-        // Images and comics: pages of different sizes, so they flow; only ones near the screen load
+        // Long strips: pages of different sizes flow; only ones near the screen load
         body = (
             <div ref={contentRef} className="flex flex-col items-center" style={{ width: Math.max(viewW, viewW * zoom), padding: `${PAD}px 0` }}>
                 {Array.from({ length: doc.numPages }, (_, i) => i + 1).map(n => (
-                    <PageView key={`${doc.hash}-${n}`} doc={doc} pageNum={n} scale={((viewW - PAD * 2) / 600) * zoom} highlighter={highlighter} ocrMode="off" ocrVersion={0} lazy seamless />
+                    <PageView key={`${doc.hash}-${n}`} doc={doc} pageNum={n} scale={((viewW - PAD * 2) / 600) * zoom} highlighter={highlighter} ocrMode={ocrMode} ocrVersion={ocrVersion} lazy seamless />
                 ))}
             </div>
         );
     }
 
     const title = displayName(book.name);
+    const toc = doc?.kind === 'epub' ? doc.book.toc : [];
+    const langName = SUPPORTED_LANGUAGES.find(l => l.code === targetLang)?.name ?? targetLang;
+    const isShown = (id: number) => shownListIds.length === 0 || (shownListIds[0] !== -1 && shownListIds.includes(id));
+    const toggleShown = (id: number) => {
+        const current = lists.filter(l => isShown(l.id)).map(l => l.id);
+        const next = current.includes(id) ? current.filter(x => x !== id) : [...current, id];
+        setShownListIds(next.length === lists.length ? [] : next.length === 0 ? [-1] : next);
+    };
+    const filterActive = shownListIds.length > 0;
+    const unit = isEpub ? 'Chapter' : 'Page';
+    const close = () => setPanel(null);
+    const chooseOcr = (m: OcrMode) => {
+        setOcrMode(m);
+        setOcrModeState(m);
+        setOcrVersion(v => v + 1);
+        close();
+    };
+    const submitGoto = () => {
+        const n = parseInt(gotoValue, 10);
+        if (Number.isFinite(n)) goTo(n);
+        close();
+    };
 
     return (
-        <div className="fixed inset-0 flex flex-col" style={{ background: 'var(--reader-bg)' }}>
-            <header className="reader-top flex items-center gap-1 px-2 border-b" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-                <button className="icon-btn tap" onClick={onClose} aria-label="Back to library">
-                    <X size={20} />
-                </button>
-                <p className="flex-1 min-w-0 truncate text-[15px] font-medium">{title}</p>
-                <select
-                    className="field h-9 w-auto text-[13px] px-2"
-                    value={targetLang}
-                    onChange={e => setTargetLang(e.target.value)}
-                    aria-label="Translate into"
-                >
-                    {SUPPORTED_LANGUAGES.map(l => (
-                        <option key={l.code} value={l.code}>→ {l.name}</option>
-                    ))}
-                </select>
-            </header>
+        <div
+            className="fixed inset-0 flex flex-col"
+            style={{ background: 'var(--reader-bg)', ['--card-bottom' as string]: focus ? 'calc(8px + env(safe-area-inset-bottom))' : 'calc(64px + env(safe-area-inset-bottom))' }}
+        >
+            {!focus && (
+                <header className="reader-top flex items-center gap-0.5 px-1 border-b" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                    <button className="icon-btn tap" onClick={onClose} aria-label="Back to library">
+                        <X size={20} />
+                    </button>
+                    <p className="flex-1 min-w-0 truncate text-[15px] font-medium ml-1">{title}</p>
+                    {toc.length > 0 && (
+                        <button className="icon-btn tap" onClick={() => setPanel('toc')} aria-label="Contents"><ListTree size={19} /></button>
+                    )}
+                    <button className="icon-btn tap relative" onClick={() => setPanel('filter')} aria-label="Highlighted lists">
+                        <Highlighter size={19} />
+                        {filterActive && <span className="absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent)' }} />}
+                    </button>
+                    <button className="icon-btn tap" onClick={() => setPanel('menu')} aria-label="Reader options"><MoreVertical size={19} /></button>
+                </header>
+            )}
 
             <div
                 ref={scrollRef}
@@ -508,17 +653,24 @@ export default function Reader({ book, onClose }: Props) {
                 {body}
             </div>
 
-            <footer className="reader-bar flex items-center gap-1 px-2 border-t" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-                <button className="icon-btn tap" onClick={() => goTo(page - 1)} disabled={!doc || page <= 1} aria-label={isEpub ? 'Previous chapter' : 'Previous page'}>
-                    <ChevronLeft size={20} />
-                </button>
-                <div className="flex-1 text-center text-[13px] muted tabular-nums">
-                    {doc ? `${isEpub ? 'Chapter' : 'Page'} ${page} of ${doc.numPages}` : ''}
-                </div>
-                <button className="icon-btn tap" onClick={() => goTo(page + 1)} disabled={!doc || page >= (doc?.numPages ?? 1)} aria-label={isEpub ? 'Next chapter' : 'Next page'}>
-                    <ChevronRight size={20} />
-                </button>
-            </footer>
+            {!focus && (
+                <footer className="reader-bar flex items-center gap-1 px-2 border-t" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+                    <button className="icon-btn tap" onClick={() => goTo(page - 1)} disabled={!doc || page <= 1} aria-label={isEpub ? 'Previous chapter' : 'Previous page'}>
+                        <ChevronLeft size={20} />
+                    </button>
+                    <button
+                        className="flex-1 h-11 text-center text-[13px] muted tabular-nums"
+                        onClick={() => { setGotoValue(String(page)); setPanel('goto'); }}
+                        disabled={!doc}
+                        aria-label={`${unit} ${page}. Go to ${unit.toLowerCase()}`}
+                    >
+                        {doc ? `${unit} ${page} of ${doc.numPages}` : ''}
+                    </button>
+                    <button className="icon-btn tap" onClick={() => goTo(page + 1)} disabled={!doc || page >= (doc?.numPages ?? 1)} aria-label={isEpub ? 'Next chapter' : 'Next page'}>
+                        <ChevronRight size={20} />
+                    </button>
+                </footer>
+            )}
 
             {card && (
                 <WordCard
@@ -533,6 +685,96 @@ export default function Reader({ book, onClose }: Props) {
                     onClose={closeCard}
                     bookLang={doc?.kind === 'epub' ? doc.book.language : undefined}
                 />
+            )}
+
+            {panel === 'menu' && (
+                <Sheet onClose={close}>
+                    <SheetItem icon={<Languages size={18} />} onClick={() => setPanel('lang')}>Translate into: {langName}</SheetItem>
+                    {doc && <SheetItem icon={<Hash size={18} />} onClick={() => { setGotoValue(String(page)); setPanel('goto'); }}>Go to {unit.toLowerCase()}…</SheetItem>}
+                    {doc?.kind === 'images' && (
+                        <SheetItem
+                            icon={continuous ? <BookOpenText size={18} /> : <GalleryVertical size={18} />}
+                            onClick={() => {
+                                const next = !continuous;
+                                localStorage.setItem(`continuous:${doc.hash}`, next ? '1' : '0');
+                                restored.current = false;
+                                startPage.current = page;
+                                setZoom(1);
+                                setContinuous(next);
+                                close();
+                            }}
+                        >
+                            {continuous ? 'Show a page at a time' : 'Show as one long strip'}
+                        </SheetItem>
+                    )}
+                    {doc && !isEpub && <SheetItem icon={<ScanText size={18} />} onClick={() => setPanel('ocr')}>Read text in images…</SheetItem>}
+                    <SheetItem icon={<Maximize2 size={18} />} onClick={() => { setFocus(true); close(); }}>Hide the bars (tap the page to show them)</SheetItem>
+                </Sheet>
+            )}
+            {panel === 'lang' && (
+                <Sheet title="Translate into" onClose={close}>
+                    {SUPPORTED_LANGUAGES.map(l => (
+                        <SheetItem key={l.code} onClick={() => { setTargetLang(l.code); close(); }} icon={<span className="w-[18px] flex justify-center">{l.code === targetLang && <Check size={16} style={{ color: 'var(--accent)' }} />}</span>}>
+                            {l.name}
+                        </SheetItem>
+                    ))}
+                </Sheet>
+            )}
+            {panel === 'ocr' && (
+                <Sheet title="Read text in images" onClose={close}>
+                    {([['auto', 'Scanned pages and images'], ['always', 'Every page'], ['off', 'Off']] as [OcrMode, string][]).map(([m, label]) => (
+                        <SheetItem key={m} onClick={() => chooseOcr(m)} icon={<span className="w-[18px] flex justify-center">{ocrMode === m && <Check size={16} style={{ color: 'var(--accent)' }} />}</span>}>{label}</SheetItem>
+                    ))}
+                </Sheet>
+            )}
+            {panel === 'toc' && (
+                <Sheet title="Contents" onClose={close}>
+                    {toc.map((t, i) => (
+                        <button
+                            key={i}
+                            className="w-full flex items-center gap-2 min-h-11 py-2 pr-3 rounded-lg text-left text-[15px] active:bg-[var(--surface-2)]"
+                            style={{ paddingLeft: 12 + t.depth * 16 }}
+                            onClick={() => { close(); goTo(t.chapter + 1, t.fragment); }}
+                        >
+                            <span className="flex-1 min-w-0">{t.title}</span>
+                            {t.chapter + 1 === page && !t.fragment && <span className="dot shrink-0" style={{ background: 'var(--accent)', width: 6, height: 6 }} />}
+                        </button>
+                    ))}
+                </Sheet>
+            )}
+            {panel === 'filter' && (
+                <Sheet title="Highlight words from" onClose={close}>
+                    {lists.length === 0 && <p className="text-[14px] faint px-3 py-3">No lists yet.</p>}
+                    {lists.map(l => (
+                        <label key={l.id} className="flex items-center gap-3 h-12 px-3 rounded-lg text-[15px] active:bg-[var(--surface-2)]">
+                            <input type="checkbox" checked={isShown(l.id)} onChange={() => toggleShown(l.id)} style={{ accentColor: 'var(--accent)', width: 18, height: 18 }} />
+                            <span className="dot" style={{ background: l.color || DEFAULT_LIST_COLOR }} />
+                            <span className="flex-1 min-w-0 truncate">{l.name}</span>
+                        </label>
+                    ))}
+                    {filterActive && <SheetItem onClick={() => setShownListIds([])}><span style={{ color: 'var(--accent)' }}>Show all lists</span></SheetItem>}
+                </Sheet>
+            )}
+            {panel === 'goto' && doc && (
+                <Dialog
+                    title={`Go to ${unit.toLowerCase()}`}
+                    onClose={close}
+                    footer={<><button className="btn btn-ghost" onClick={close}>Cancel</button><button className="btn btn-primary" onClick={submitGoto}>Go</button></>}
+                >
+                    <input
+                        className="field"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={doc.numPages}
+                        autoFocus
+                        value={gotoValue}
+                        onChange={e => setGotoValue(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && submitGoto()}
+                        aria-label={`${unit} number`}
+                    />
+                    <p className="text-[12.5px] faint mt-1.5">1 to {doc.numPages}</p>
+                </Dialog>
             )}
         </div>
     );

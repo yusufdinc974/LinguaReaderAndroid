@@ -30,11 +30,20 @@ body {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* The word card is the desktop popover; on a phone it spans the screen width */
+/* The word card is the desktop popover; on a phone it sits above the bottom
+   bar, spans the screen width, and scrolls when a dictionary entry makes it tall */
 .popover[role='dialog'] {
   width: min(calc(100vw - 16px), 420px) !important;
   left: 50% !important;
   transform: translateX(-50%);
+}
+
+.popover[role='dialog'][aria-label='Translation'] {
+  top: auto !important;
+  bottom: var(--card-bottom, 8px) !important;
+  max-height: 68vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .popover[role='dialog'] .btn {
@@ -94,4 +103,46 @@ canvas {
   min-height: 44px;
   padding-left: 20px;
   padding-right: 20px;
+}
+
+/* Bottom sheets (src/components/Sheet.tsx) */
+.sheet {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.anim-up {
+  animation: sheet-up 0.16s ease-out;
+}
+
+.anim-fade {
+  animation: sheet-fade 0.16s ease-out;
+}
+
+/* Desktop dialogs (Import / Export, Anki import…) fit the phone screen */
+div[role='dialog'][aria-modal='true'] {
+  padding: 12px !important;
+}
+
+div[role='dialog'][aria-modal='true'] > .popover {
+  max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+}
+
+div[role='dialog'][aria-modal='true'] .btn {
+  min-height: 40px;
+}
+
+.field {
+  min-height: 40px;
+  font-size: 16px; /* smaller text makes Android zoom in on focus */
 }

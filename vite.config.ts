@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
@@ -69,6 +70,10 @@ export default defineConfig({
     build: {
         outDir: 'dist',
         emptyOutDir: true,
+    },
+    test: {
+        include: ['test/unit/**/*.test.ts'],
+        environment: 'node',
     },
     server: {
         port: 5174,

@@ -14,6 +14,10 @@ import { initialSrs } from '../lib/srsStart';
 import { openDb, type Db } from './db';
 import { httpRequest } from './http';
 import { bytesToBase64, readFile, writeFile } from './storage';
+import { pickFile } from './files';
+import { dataApi } from './dataIO';
+import { dictionaries } from './dictionary';
+import * as ocr from './ocr';
 
 type Api = Window['electronAPI'];
 
@@ -84,25 +88,6 @@ export async function translate(db: Db, text: string, targetLang: string) {
 /** Opened books are copied into the app's storage, so they can be reopened from the Library. */
 const BOOKS = 'books';
 
-function pickFile(accept: string): Promise<File | null> {
-    return new Promise(resolve => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = accept;
-        input.style.display = 'none';
-        input.onchange = () => {
-            resolve(input.files?.[0] ?? null);
-            input.remove();
-        };
-        input.oncancel = () => {
-            resolve(null);
-            input.remove();
-        };
-        document.body.appendChild(input);
-        input.click();
-    });
-}
-
 async function fileId(bytes: Uint8Array) {
     const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource));
     return Array.from(hash.subarray(0, 8), b => b.toString(16).padStart(2, '0')).join('');
@@ -112,9 +97,15 @@ const BOOK_TYPES = '.pdf,.epub,.cbz,.zip,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif,a
 
 // ---------------------------------------------------------------- the API
 
+const listeners = new Set<() => void>();
+/** Tells every screen that words, lists or progress changed (they reload). */
+export const notifyDataChanged = () => listeners.forEach(l => l());
+
+/** Other forms of saved words, per language and word (dictionaries don't change while the app runs). */
+const formsCache = new Map<string, string[]>();
+
 export function createApi(db: Db): Api {
-    const listeners = new Set<() => void>();
-    const changed = () => listeners.forEach(l => l());
+    const changed = notifyDataChanged;
 
     const impl: Partial<Api> = {
         // Books
@@ -311,14 +302,48 @@ export function createApi(db: Db): Api {
         },
         translateText: (text, targetLang = 'en') => translate(db, text, targetLang),
 
-        // Not on the phone yet: the desktop UI treats these as "nothing installed"
-        ocrAvailable: async () => false,
-        ocrGetDoc: async () => null,
-        ocrCached: async () => null,
+        ...dataApi(db, changed),
+
+        // Text in images: ML Kit (one model for Latin-alphabet languages)
+        ocrAvailable: () => ocr.ocrAvailable(),
+        ocrGetDoc: async () => ({ script: 'v6', chosen: false }),
+        ocrSetDocScript: async () => true,
+        ocrCached: (hash, page) => ocr.ocrCached(hash, page),
+        ocrRecognize: (hash, page, _script, image) => ocr.ocrRecognize(hash, page, image),
+        // Downloaded natural voices aren't on the phone: its own voices are used (platform/speech.ts)
         ttsStatus: async () => ({ supported: false, engine: false, voices: [] }),
-        dictStatus: async () => [],
-        dictLookup: async () => null,
-        dictForms: async () => [],
+
+        // Offline dictionaries (desktop: electron/dictionary.ts)
+        dictStatus: () => dictionaries.installed(),
+        dictAvailable: () => dictionaries.available(),
+        dictInstall: lang => (formsCache.clear(), dictionaries.install(lang)),
+        dictRemove: lang => (formsCache.clear(), dictionaries.remove(lang)),
+        dictLookup: async (lang, text) => {
+            if (typeof lang !== 'string' || typeof text !== 'string' || !(await dictionaries.installed()).includes(lang)) return null;
+            try {
+                return await dictionaries.lookup(lang, text);
+            } catch (e) {
+                console.error('Dictionary lookup failed:', e);
+                return [];
+            }
+        },
+        dictForms: async words => {
+            if (!Array.isArray(words)) return [];
+            const have = new Set(await dictionaries.installed());
+            const out: [string, string][] = [];
+            for (const w of words.slice(0, 20000)) {
+                if (!w || typeof w.key !== 'string' || !have.has(w.lang)) continue;
+                const cacheKey = `${w.lang}:${w.key}`;
+                let forms = formsCache.get(cacheKey);
+                if (!forms) {
+                    forms = await dictionaries.formsOf(w.lang, w.key).catch(() => []);
+                    formsCache.set(cacheKey, forms);
+                }
+                for (const f of forms) out.push([f, w.key]);
+            }
+            return out;
+        },
+        onDictProgress: cb => dictionaries.onProgress(cb),
         getAppVersion: async () => __APP_VERSION__,
         onDataUpdated: cb => {
             listeners.add(cb);
@@ -327,7 +352,6 @@ export function createApi(db: Db): Api {
         onSyncStatus: () => () => { },
         onUpdateStatus: () => () => { },
         onTtsProgress: () => () => { },
-        onDictProgress: () => () => { },
     };
 
     return new Proxy(impl as Api, {

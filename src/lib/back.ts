@@ -19,6 +19,9 @@ export function handleBack(): boolean {
     return true;
 }
 
+/** A desktop dialog (Import / Export, Anki import, confirm…) is open: it closes on Escape. */
+const desktopModal = () => document.querySelector('[role="dialog"][aria-modal="true"]:not([data-back])');
+
 let installed = false;
 /** Call once at startup. */
 export function installBackButton() {
@@ -26,12 +29,13 @@ export function installBackButton() {
     installed = true;
     if (isNative) {
         App.addListener('backButton', () => {
-            if (!handleBack()) void App.minimizeApp();
+            if (desktopModal()) window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+            else if (!handleBack()) void App.minimizeApp();
         });
     } else {
         // In a browser, Escape stands in for the back button
         window.addEventListener('keydown', e => {
-            if (e.key === 'Escape' && handleBack()) e.preventDefault();
+            if (e.key === 'Escape' && !desktopModal() && handleBack()) e.preventDefault();
         });
     }
 }

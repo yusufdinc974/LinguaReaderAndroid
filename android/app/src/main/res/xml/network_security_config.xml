@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Wi-Fi sync talks to the desktop app over plain HTTP on the local network
+  (the desktop's sync server has no certificate). Plain HTTP is allowed for
+  that; everything else (translation, dictionaries) uses HTTPS. The page's
+  Content-Security-Policy still keeps the web view itself on HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
