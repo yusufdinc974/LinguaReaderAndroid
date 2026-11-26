@@ -1,0 +1,148 @@
+/* Phone layout on top of the desktop app's styles (desktop/src/index.css). */
+
+html,
+body,
+#root {
+  height: 100%;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  /* Android draws the app edge to edge: keep clear of the status and navigation bars */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+}
+
+/* Fingers need bigger targets than a mouse pointer */
+.icon-btn.tap {
+  width: 44px;
+  height: 44px;
+}
+
+.reader-top {
+  min-height: 52px;
+  padding-top: env(safe-area-inset-top);
+}
+
+.reader-bar,
+.tab-bar {
+  min-height: 56px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* The word card is the desktop popover; on a phone it sits above the bottom
+   bar, spans the screen width, and scrolls when a dictionary entry makes it tall */
+.popover[role='dialog'] {
+  width: min(calc(100vw - 16px), 420px) !important;
+  left: 50% !important;
+  transform: translateX(-50%);
+}
+
+.popover[role='dialog'][aria-label='Translation'] {
+  top: auto !important;
+  bottom: var(--card-bottom, 8px) !important;
+  max-height: 68vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.popover[role='dialog'] .btn {
+  min-height: 40px;
+}
+
+/* Don't let a long press on a page open the image/link menu */
+.pdf-text-layer,
+canvas {
+  -webkit-touch-callout: none;
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+
+.tab-btn[aria-current='page'] {
+  color: var(--accent);
+}
+
+/* Pinch zoom is handled by the reader (src/screens/Reader.tsx), not the browser */
+.reader-scroll {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Keyboard hints from the desktop review screen mean nothing on a phone */
+.review-host .kbd {
+  display: none;
+}
+
+.review-host .btn-lg {
+  min-height: 48px;
+}
+
+/* The desktop review setup is a popover; on the phone it sits in a bottom sheet */
+.review-setup-sheet .popover {
+  position: static;
+  width: 100%;
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+
+.review-setup-sheet .segmented button {
+  min-height: 40px;
+}
+
+.review-setup-sheet .btn {
+  min-height: 44px;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+
+/* Bottom sheets (src/components/Sheet.tsx) */
+.sheet {
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
+}
+
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes sheet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.anim-up {
+  animation: sheet-up 0.16s ease-out;
+}
+
+.anim-fade {
+  animation: sheet-fade 0.16s ease-out;
+}
+
+/* Desktop dialogs (Import / Export, Anki import…) fit the phone screen */
+div[role='dialog'][aria-modal='true'] {
+  padding: 12px !important;
+}
+
+div[role='dialog'][aria-modal='true'] > .popover {
+  max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: auto;
+}
+
+div[role='dialog'][aria-modal='true'] .btn {
+  min-height: 40px;
+}
+
+.field {
+  min-height: 40px;
+  font-size: 16px; /* smaller text makes Android zoom in on focus */
+}
