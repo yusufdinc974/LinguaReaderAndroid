@@ -74,6 +74,8 @@ const SCHEMA = `
       last_review_date TEXT,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE INDEX IF NOT EXISTS idx_word_list_items_word ON word_list_items (word_id);
+    CREATE INDEX IF NOT EXISTS idx_words_word ON words (word, translation);
 `;
 
 export type Row = Record<string, SqlValue>;

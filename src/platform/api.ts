@@ -45,10 +45,14 @@ function deleteOrphanWords(db: Db, onlyIds: number[]) {
          AND w.id IN (${onlyIds.map(() => '?').join(',')})`,
         onlyIds,
     );
+    if (orphans.length === 0) return;
+    // Keys still used by the words that stay (one pass, not one scan per word)
+    const gone = new Set(orphans.map(o => o.id));
+    const kept = new Set<string>();
+    for (const w of db.all<{ id: number; word: string }>('SELECT id, word FROM words')) if (!gone.has(w.id)) kept.add(wordKey(w.word));
     for (const o of orphans) {
         const key = wordKey(o.word);
-        const stillUsed = db.get('SELECT 1 FROM words WHERE id != ? AND word_key(word) = ? LIMIT 1', [o.id, key]);
-        if (!stillUsed) db.run('DELETE FROM word_familiarity WHERE word_lower = ?', [key]);
+        if (!kept.has(key)) db.run('DELETE FROM word_familiarity WHERE word_lower = ?', [key]);
         db.run('DELETE FROM words WHERE id = ?', [o.id]);
     }
 }

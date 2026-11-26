@@ -366,18 +366,25 @@ export function dataApi(db: Db, changed: () => void): Partial<Api> {
                     }
                     stats.listId = listId;
                     const day = today();
+                    // Saved words by key, read once (a lookup per card would scan every word each time)
+                    const saved = new Map<string, { id: number; sentence_context: string | null }>();
+                    for (const r of db.all<{ id: number; word: string; sentence_context: string | null }>('SELECT id, word, sentence_context FROM words ORDER BY id')) {
+                        const k = wordKey(r.word);
+                        if (!saved.has(k)) saved.set(k, { id: r.id, sentence_context: r.sentence_context });
+                    }
                     for (const w of words) {
                         const key = wordKey(w.word);
-                        const existing = db.get<{ id: number; sentence_context: string | null }>('SELECT id, sentence_context FROM words WHERE word_key(word) = ? LIMIT 1', [key]);
+                        const existing = saved.get(key);
                         let id: number;
                         if (existing) {
                             id = existing.id;
-                            if (w.sentence && !existing.sentence_context) db.run('UPDATE words SET sentence_context = ? WHERE id = ?', [w.sentence, id]);
+                            if (w.sentence && !existing.sentence_context) { db.run('UPDATE words SET sentence_context = ? WHERE id = ?', [w.sentence, id]); existing.sentence_context = w.sentence; }
                             stats.existing++;
                         } else {
                             id = db.run("INSERT INTO words (word, translation, source_language, target_language, sentence_context, pdf_name) VALUES (?, ?, ?, 'auto', ?, ?)", [
                                 w.word, w.translation, lang, w.sentence, w.deck ? `Anki: ${w.deck}` : 'Anki',
                             ]).lastInsertRowid;
+                            saved.set(key, { id, sentence_context: w.sentence || null });
                             stats.added++;
                         }
                         db.run('INSERT OR IGNORE INTO word_list_items (word_list_id, word_id) VALUES (?, ?)', [listId, id]);
