@@ -9,6 +9,7 @@ import PronunciationSettings from '@desktop/components/PronunciationSettings';
 import DictionarySettings from '@desktop/components/DictionarySettings';
 import { useBack } from '../lib/back';
 import SyncSettings from './SyncSettings';
+import OcrPacks from './OcrPacks';
 
 function Section({ id, title, description, children }: { id?: string; title: string; description?: string; children: ReactNode }) {
     return (
@@ -123,7 +124,7 @@ export default function Settings({ theme, onThemeChange, onClose, onImportExport
                     <DictionarySettings />
                 </Section>
 
-                <Section title="Text in images" description="Tap words in scanned PDFs, photos and comics.">
+                <Section id="settings-ocr" title="Text in images" description="Tap words in scanned PDFs, photos and comics.">
                     <div className="grid gap-1">
                         {([['auto', 'Scanned pages and images'], ['always', 'Every page'], ['off', 'Off']] as [OcrMode, string][]).map(([m, label]) => (
                             <label key={m} className="flex items-center gap-3 h-11 text-[15px]">
@@ -132,7 +133,7 @@ export default function Settings({ theme, onThemeChange, onClose, onImportExport
                             </label>
                         ))}
                     </div>
-                    <p className="text-[12.5px] faint mt-1">Reads Latin-alphabet languages (English, Turkish, French, German, Spanish…).</p>
+                    <OcrPacks />
                 </Section>
 
                 <Section title="Import and export" description="Backups, Anki decks and CSV files.">

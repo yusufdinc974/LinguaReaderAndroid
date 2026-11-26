@@ -310,10 +310,10 @@ export function createApi(db: Db): Api {
 
         // Text in images: ML Kit (one model for Latin-alphabet languages)
         ocrAvailable: () => ocr.ocrAvailable(),
-        ocrGetDoc: async () => ({ script: 'v6', chosen: false }),
-        ocrSetDocScript: async () => true,
-        ocrCached: (hash, page) => ocr.ocrCached(hash, page),
-        ocrRecognize: (hash, page, _script, image) => ocr.ocrRecognize(hash, page, image),
+        ocrGetDoc: async hash => ocr.ocrGetDoc(hash),
+        ocrSetDocScript: async (hash, script) => ocr.ocrSetDocScript(hash, script),
+        ocrCached: (hash, page, script) => ocr.ocrCached(hash, page, script),
+        ocrRecognize: (hash, page, script, image) => ocr.ocrRecognize(hash, page, script, image),
         // Downloaded natural voices aren't on the phone: its own voices are used (platform/speech.ts)
         ttsStatus: async () => ({ supported: false, engine: false, voices: [] }),
 

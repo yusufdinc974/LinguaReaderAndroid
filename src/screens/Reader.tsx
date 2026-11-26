@@ -26,6 +26,8 @@ import type { WordList } from '@desktop/types';
 import { selectWordAt } from '../lib/tapWord';
 import { useBack } from '../lib/back';
 import Sheet, { SheetItem } from '../components/Sheet';
+import { SCRIPTS, type ScriptId } from '@desktop/../electron/ocr/types';
+import { refreshOcrModels } from '../platform/ocr';
 
 export interface OpenBook {
     name: string;
@@ -79,6 +81,9 @@ export default function Reader({ book, onClose }: Props) {
     const [shownListIds, setShownListIds] = useState<number[]>([]);
     const [ocrMode, setOcrModeState] = useState<OcrMode>(getOcrMode);
     const [ocrVersion, setOcrVersion] = useState(0);
+    // Script of this book's pictures: picked, or found automatically; and the scripts on the phone
+    const [docScript, setDocScript] = useState<{ script: ScriptId; chosen: boolean } | null>(null);
+    const [ocrScripts, setOcrScripts] = useState<ScriptId[]>([]);
     /** Images: one long strip (webtoons) rather than a page at a time */
     const [continuous, setContinuous] = useState(true);
     /** Focus: the bars are hidden */
@@ -615,6 +620,18 @@ export default function Reader({ book, onClose }: Props) {
         setOcrVersion(v => v + 1);
         close();
     };
+    const openOcr = () => {
+        setPanel('ocr');
+        refreshOcrModels().then(setOcrScripts);
+        if (doc) window.electronAPI.ocrGetDoc(doc.hash).then(setDocScript).catch(() => setDocScript(null));
+    };
+    const chooseScript = async (script: ScriptId | null) => {
+        if (!doc) return;
+        await window.electronAPI.ocrSetDocScript(doc.hash, script);
+        setDocScript(script ? { script, chosen: true } : null);
+        setOcrVersion(v => v + 1);
+        close();
+    };
     const submitGoto = () => {
         const n = parseInt(gotoValue, 10);
         if (Number.isFinite(n)) goTo(n);
@@ -707,7 +724,7 @@ export default function Reader({ book, onClose }: Props) {
                             {continuous ? 'Show a page at a time' : 'Show as one long strip'}
                         </SheetItem>
                     )}
-                    {doc && !isEpub && <SheetItem icon={<ScanText size={18} />} onClick={() => setPanel('ocr')}>Read text in images…</SheetItem>}
+                    {doc && !isEpub && <SheetItem icon={<ScanText size={18} />} onClick={openOcr}>Read text in images…</SheetItem>}
                     <SheetItem icon={<Maximize2 size={18} />} onClick={() => { setFocus(true); close(); }}>Hide the bars (tap the page to show them)</SheetItem>
                 </Sheet>
             )}
@@ -725,6 +742,21 @@ export default function Reader({ book, onClose }: Props) {
                     {([['auto', 'Scanned pages and images'], ['always', 'Every page'], ['off', 'Off']] as [OcrMode, string][]).map(([m, label]) => (
                         <SheetItem key={m} onClick={() => chooseOcr(m)} icon={<span className="w-[18px] flex justify-center">{ocrMode === m && <Check size={16} style={{ color: 'var(--accent)' }} />}</span>}>{label}</SheetItem>
                     ))}
+                    <p className="label px-3 pt-3 pb-1">Script</p>
+                    <SheetItem onClick={() => chooseScript(null)} icon={<span className="w-[18px] flex justify-center">{!docScript?.chosen && <Check size={16} style={{ color: 'var(--accent)' }} />}</span>}>
+                        Detect automatically{docScript && !docScript.chosen && <span className="faint"> · {SCRIPTS.find(x => x.id === docScript.script)?.label}</span>}
+                    </SheetItem>
+                    {SCRIPTS.filter(sc => ocrScripts.includes(sc.id) || (sc.id === 'v6' && ocrScripts.length === 0)).map(sc => (
+                        <SheetItem key={sc.id} onClick={() => chooseScript(sc.id)} icon={<span className="w-[18px] flex justify-center">{docScript?.chosen && docScript.script === sc.id && <Check size={16} style={{ color: 'var(--accent)' }} />}</span>}>
+                            {sc.id === 'v6' && ocrScripts.length === 0 ? 'Latin alphabets' : sc.label}
+                        </SheetItem>
+                    ))}
+                    <SheetItem
+                        onClick={() => { close(); window.dispatchEvent(new CustomEvent('linguareader:open-settings', { detail: 'ocr' })); }}
+                        icon={<span className="w-[18px]" />}
+                    >
+                        <span style={{ color: 'var(--accent)' }}>{ocrScripts.length === 0 ? 'Download other scripts…' : 'More scripts…'}</span>
+                    </SheetItem>
                 </Sheet>
             )}
             {panel === 'toc' && (
