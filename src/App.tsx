@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { BookOpen, Languages } from 'lucide-react';
+import { BookOpen, GraduationCap, Languages } from 'lucide-react';
 import { useTheme } from '@desktop/lib/theme';
+import { useBack } from './lib/back';
 import Library from './screens/Library';
 import Words from './screens/Words';
+import ReviewTab from './screens/ReviewTab';
 import Reader, { type OpenBook } from './screens/Reader';
 
-type Tab = 'library' | 'words';
+type Tab = 'library' | 'words' | 'review';
 
 export default function App() {
     useTheme();
@@ -34,26 +36,23 @@ export default function App() {
         </div>
     );
 
-    // Android back button / gesture closes the book first
-    useEffect(() => {
-        if (!book) return;
-        history.pushState({ reader: true }, '');
-        const onPop = () => setBook(null);
-        window.addEventListener('popstate', onPop);
-        return () => window.removeEventListener('popstate', onPop);
-    }, [book]);
+    // Back on another tab returns to the Library first
+    useBack(() => setTab('library'), tab !== 'library' && !book);
 
-    if (book) return <><Reader book={book} onClose={() => history.back()} />{toast}</>;
+    if (book) return <><Reader book={book} onClose={() => setBook(null)} />{toast}</>;
 
     return (
         <div className="h-full flex flex-col" style={{ background: 'var(--bg)' }}>
-            <main className="flex-1 min-h-0">{tab === 'library' ? <Library onOpen={setBook} /> : <Words />}</main>
+            <main className="flex-1 min-h-0">{tab === 'library' ? <Library onOpen={setBook} /> : tab === 'words' ? <Words /> : <ReviewTab />}</main>
             <nav className="tab-bar flex border-t" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
                 <button className="tab-btn" aria-current={tab === 'library' ? 'page' : undefined} onClick={() => setTab('library')}>
                     <BookOpen size={20} /> Library
                 </button>
                 <button className="tab-btn" aria-current={tab === 'words' ? 'page' : undefined} onClick={() => setTab('words')}>
                     <Languages size={20} /> Words
+                </button>
+                <button className="tab-btn" aria-current={tab === 'review' ? 'page' : undefined} onClick={() => setTab('review')}>
+                    <GraduationCap size={20} /> Review
                 </button>
             </nav>
             {toast}

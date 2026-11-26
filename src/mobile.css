@@ -61,3 +61,37 @@ canvas {
 .tab-btn[aria-current='page'] {
   color: var(--accent);
 }
+
+/* Pinch zoom is handled by the reader (src/screens/Reader.tsx), not the browser */
+.reader-scroll {
+  touch-action: pan-x pan-y;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Keyboard hints from the desktop review screen mean nothing on a phone */
+.review-host .kbd {
+  display: none;
+}
+
+.review-host .btn-lg {
+  min-height: 48px;
+}
+
+/* The desktop review setup is a popover; on the phone it sits in a bottom sheet */
+.review-setup-sheet .popover {
+  position: static;
+  width: 100%;
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+
+.review-setup-sheet .segmented button {
+  min-height: 40px;
+}
+
+.review-setup-sheet .btn {
+  min-height: 44px;
+  padding-left: 20px;
+  padding-right: 20px;
+}

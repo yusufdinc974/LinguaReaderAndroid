@@ -288,6 +288,10 @@ export function createApi(db: Db): Api {
             );
         },
 
+        // Reviews
+        saveQuizResult: async (listId, score, total, quizType) =>
+            db.run('INSERT INTO quiz_results (word_list_id, score, total_questions, quiz_type) VALUES (?, ?, ?, ?)', [listId, score, total, quizType]).lastInsertRowid,
+
         // Settings
         getSetting: async key => (PAGE_SETTINGS.has(key) ? db.get<{ value: string }>('SELECT value FROM user_settings WHERE key = ?', [key])?.value : undefined),
         setSetting: async (key, value) => {
