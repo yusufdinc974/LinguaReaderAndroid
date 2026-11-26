@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LinguaReader</string>
+    <string name="title_activity_main">LinguaReader</string>
+    <string name="package_name">com.yusufdinc.linguareader</string>
+    <string name="custom_url_scheme">com.yusufdinc.linguareader</string>
+</resources>
