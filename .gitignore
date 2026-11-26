@@ -23,3 +23,6 @@ keystore.properties
 
 # Supabase CLI state
 supabase/.temp/
+
+# Shared debug signing key (see android/app/build.gradle); release keys stay ignored
+!android/app/debug-shared.keystore
